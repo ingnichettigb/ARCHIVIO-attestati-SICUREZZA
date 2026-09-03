@@ -1,0 +1,257 @@
+import { supabase } from "@/integrations/supabase/client";
+
+export type Dipendente = {
+  id: string;
+  codice_fiscale: string;
+  cognome: string;
+  nome: string;
+  email: string | null;
+  reparto: string | null;
+  luogo_nascita: string | null;
+  data_nascita: string | null;
+};
+
+export type TipoCorso = {
+  id: string;
+  nome_corso: string;
+  macro_categoria: string;
+  livello_specifico: string;
+  ore_minime_legge: number | null;
+  durata_validita_anni: number | null;
+};
+
+export type Stato = "In attesa" | "Approvato" | "Respinto";
+
+export type Attestato = {
+  id: string;
+  dipendente_id: string;
+  codice_fiscale: string;
+  tipo_corso_id: string;
+  data_corso: string;
+  data_scadenza_calcolata: string | null;
+  ore_dichiarate: number | null;
+  url_foto_fronte: string | null;
+  url_foto_retro: string | null;
+  stato_validazione: Stato;
+  note_rifiuto: string | null;
+  data_validazione: string | null;
+  created_at: string;
+  dipendenti?: Dipendente | null;
+  tipi_corso?: TipoCorso | null;
+};
+
+export async function getTipiCorso(): Promise<TipoCorso[]> {
+  const { data, error } = await supabase
+    .from("tipi_corso")
+    .select("*")
+    .order("macro_categoria")
+    .order("nome_corso");
+  if (error) throw error;
+  return (data ?? []) as TipoCorso[];
+}
+
+export async function getAttestati(stato?: Stato | "Tutti"): Promise<Attestato[]> {
+  let q = supabase
+    .from("attestati_caricati")
+    .select("*, dipendenti(*), tipi_corso(*)")
+    .order("created_at", { ascending: false })
+    .limit(1000);
+  if (stato && stato !== "Tutti") q = q.eq("stato_validazione", stato);
+  const { data, error } = await q;
+  if (error) throw error;
+  return (data ?? []) as unknown as Attestato[];
+}
+
+export async function getDipendenti(): Promise<Dipendente[]> {
+  const { data, error } = await supabase
+    .from("dipendenti")
+    .select("*")
+    .order("cognome")
+    .limit(2000);
+  if (error) throw error;
+  return (data ?? []) as Dipendente[];
+}
+
+export async function upsertDipendente(
+  d: Omit<Dipendente, "id">,
+): Promise<Dipendente> {
+  const payload = {
+    ...d,
+    codice_fiscale: d.codice_fiscale.trim().toUpperCase(),
+    data_nascita: d.data_nascita || null,
+  };
+  const { data, error } = await supabase
+    .from("dipendenti")
+    .upsert(payload, { onConflict: "codice_fiscale" })
+    .select()
+    .single();
+  if (error) throw error;
+  return data as Dipendente;
+}
+
+export async function uploadFoto(file: File, cf: string, lato: string) {
+  const ext = file.name.split(".").pop() || "jpg";
+  const path = `${cf}/${Date.now()}-${lato}.${ext}`;
+  const { error } = await supabase.storage.from("attestati").upload(path, file);
+  if (error) throw error;
+  return path;
+}
+
+export async function fotoUrl(path: string | null): Promise<string | null> {
+  if (!path) return null;
+  const { data } = await supabase.storage
+    .from("attestati")
+    .createSignedUrl(path, 60 * 60);
+  return data?.signedUrl ?? null;
+}
+
+export async function creaAttestato(input: {
+  dipendente_id: string;
+  codice_fiscale: string;
+  tipo_corso_id: string;
+  data_corso: string;
+  ore_dichiarate: number | null;
+  url_foto_fronte: string | null;
+  url_foto_retro: string | null;
+}) {
+  const { data, error } = await supabase
+    .from("attestati_caricati")
+    .insert({ ...input, stato_validazione: "In attesa" })
+    .select()
+    .single();
+  if (error) throw error;
+  return data;
+}
+
+export async function aggiornaAttestato(
+  id: string,
+  patch: Partial<Attestato>,
+) {
+  const { data, error } = await supabase
+    .from("attestati_caricati")
+    .update(patch)
+    .eq("id", id)
+    .select("*, dipendenti(*), tipi_corso(*)")
+    .single();
+  if (error) throw error;
+  return data as unknown as Attestato;
+}
+
+/** Simulazione invio email di esito (stampa su console). */
+export function simulaEmail(a: Attestato, esito: Stato) {
+  console.log(
+    [
+      "───────── EMAIL SIMULATA ─────────",
+      `A: ${a.dipendenti?.email ?? "(email non presente)"}`,
+      `Codice fiscale: ${a.codice_fiscale}`,
+      `Corso: ${a.tipi_corso?.nome_corso ?? a.tipo_corso_id}`,
+      `Esito: ${esito}`,
+      esito === "Respinto" ? `Motivazione: ${a.note_rifiuto ?? ""}` : "",
+      "──────────────────────────────────",
+    ]
+      .filter(Boolean)
+      .join("\n"),
+  );
+}
+
+/** Esporta l'intero database in un file JSON salvato sul dispositivo. */
+export async function esportaDb() {
+  const [dip, tipi, att] = await Promise.all([
+    supabase.from("dipendenti").select("*").limit(5000),
+    supabase.from("tipi_corso").select("*"),
+    supabase.from("attestati_caricati").select("*").limit(20000),
+  ]);
+  const dump = {
+    esportato_il: new Date().toISOString(),
+    versione: 1,
+    dipendenti: dip.data ?? [],
+    tipi_corso: tipi.data ?? [],
+    attestati_caricati: att.data ?? [],
+  };
+  const blob = new Blob([JSON.stringify(dump, null, 2)], {
+    type: "application/json",
+  });
+  const nome = `archivio-attestati-${new Date().toISOString().slice(0, 10)}.json`;
+
+  const w = window as unknown as {
+    showSaveFilePicker?: (o: unknown) => Promise<{
+      createWritable: () => Promise<{
+        write: (b: Blob) => Promise<void>;
+        close: () => Promise<void>;
+      }>;
+    }>;
+  };
+  if (w.showSaveFilePicker) {
+    try {
+      const handle = await w.showSaveFilePicker({
+        suggestedName: nome,
+        types: [
+          { description: "Backup JSON", accept: { "application/json": [".json"] } },
+        ],
+      });
+      const writable = await handle.createWritable();
+      await writable.write(blob);
+      await writable.close();
+      return dump;
+    } catch (e) {
+      if ((e as DOMException)?.name === "AbortError") return null;
+    }
+  }
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = nome;
+  a.click();
+  URL.revokeObjectURL(url);
+  return dump;
+}
+
+/** Ripristina un backup JSON nel database (unisce, non cancella). */
+export async function importaDb(file: File) {
+  const dump = JSON.parse(await file.text());
+  let dipCount = 0;
+  let attCount = 0;
+
+  if (Array.isArray(dump.tipi_corso) && dump.tipi_corso.length) {
+    await supabase.from("tipi_corso").upsert(dump.tipi_corso, { onConflict: "id" });
+  }
+  if (Array.isArray(dump.dipendenti)) {
+    for (let i = 0; i < dump.dipendenti.length; i += 200) {
+      const chunk = dump.dipendenti.slice(i, i + 200);
+      const { error } = await supabase
+        .from("dipendenti")
+        .upsert(chunk, { onConflict: "codice_fiscale" });
+      if (error) throw error;
+      dipCount += chunk.length;
+    }
+  }
+  if (Array.isArray(dump.attestati_caricati)) {
+    for (let i = 0; i < dump.attestati_caricati.length; i += 200) {
+      const chunk = dump.attestati_caricati.slice(i, i + 200);
+      const { error } = await supabase
+        .from("attestati_caricati")
+        .upsert(chunk, { onConflict: "id" });
+      if (error) throw error;
+      attCount += chunk.length;
+    }
+  }
+  return { dipCount, attCount };
+}
+
+export function statoBadgeClass(stato: string) {
+  if (stato === "Approvato") return "bg-success/12 text-success border-success/30";
+  if (stato === "Respinto")
+    return "bg-destructive/12 text-destructive border-destructive/30";
+  return "bg-warning/15 text-warning-foreground border-warning/35";
+}
+
+export function formatData(d: string | null | undefined) {
+  if (!d) return "—";
+  const [y, m, day] = d.slice(0, 10).split("-");
+  return `${day}/${m}/${y}`;
+}
+
+export function scaduto(d: string | null | undefined) {
+  if (!d) return false;
+  return new Date(d) < new Date();
+}
