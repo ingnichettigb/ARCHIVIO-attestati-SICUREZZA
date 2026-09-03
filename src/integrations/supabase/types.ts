@@ -14,7 +14,151 @@ export type Database = {
   }
   public: {
     Tables: {
-      [_ in never]: never
+      attestati_caricati: {
+        Row: {
+          codice_fiscale: string
+          created_at: string
+          data_corso: string
+          data_scadenza_calcolata: string | null
+          data_validazione: string | null
+          dipendente_id: string
+          id: string
+          note_rifiuto: string | null
+          ore_dichiarate: number | null
+          stato_validazione: string
+          tipo_corso_id: string
+          updated_at: string
+          url_foto_fronte: string | null
+          url_foto_retro: string | null
+        }
+        Insert: {
+          codice_fiscale: string
+          created_at?: string
+          data_corso: string
+          data_scadenza_calcolata?: string | null
+          data_validazione?: string | null
+          dipendente_id: string
+          id?: string
+          note_rifiuto?: string | null
+          ore_dichiarate?: number | null
+          stato_validazione?: string
+          tipo_corso_id: string
+          updated_at?: string
+          url_foto_fronte?: string | null
+          url_foto_retro?: string | null
+        }
+        Update: {
+          codice_fiscale?: string
+          created_at?: string
+          data_corso?: string
+          data_scadenza_calcolata?: string | null
+          data_validazione?: string | null
+          dipendente_id?: string
+          id?: string
+          note_rifiuto?: string | null
+          ore_dichiarate?: number | null
+          stato_validazione?: string
+          tipo_corso_id?: string
+          updated_at?: string
+          url_foto_fronte?: string | null
+          url_foto_retro?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "attestati_caricati_codice_fiscale_fkey"
+            columns: ["codice_fiscale"]
+            isOneToOne: false
+            referencedRelation: "dipendenti"
+            referencedColumns: ["codice_fiscale"]
+          },
+          {
+            foreignKeyName: "attestati_caricati_dipendente_id_fkey"
+            columns: ["dipendente_id"]
+            isOneToOne: false
+            referencedRelation: "dipendenti"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "attestati_caricati_tipo_corso_id_fkey"
+            columns: ["tipo_corso_id"]
+            isOneToOne: false
+            referencedRelation: "tipi_corso"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      dipendenti: {
+        Row: {
+          codice_fiscale: string
+          cognome: string
+          created_at: string
+          data_nascita: string | null
+          email: string | null
+          id: string
+          luogo_nascita: string | null
+          nome: string
+          reparto: string | null
+          updated_at: string
+        }
+        Insert: {
+          codice_fiscale: string
+          cognome: string
+          created_at?: string
+          data_nascita?: string | null
+          email?: string | null
+          id?: string
+          luogo_nascita?: string | null
+          nome: string
+          reparto?: string | null
+          updated_at?: string
+        }
+        Update: {
+          codice_fiscale?: string
+          cognome?: string
+          created_at?: string
+          data_nascita?: string | null
+          email?: string | null
+          id?: string
+          luogo_nascita?: string | null
+          nome?: string
+          reparto?: string | null
+          updated_at?: string
+        }
+        Relationships: []
+      }
+      tipi_corso: {
+        Row: {
+          created_at: string
+          durata_validita_anni: number | null
+          id: string
+          livello_specifico: string
+          macro_categoria: string
+          nome_corso: string
+          ore_minime_legge: number | null
+          updated_at: string
+        }
+        Insert: {
+          created_at?: string
+          durata_validita_anni?: number | null
+          id?: string
+          livello_specifico: string
+          macro_categoria: string
+          nome_corso: string
+          ore_minime_legge?: number | null
+          updated_at?: string
+        }
+        Update: {
+          created_at?: string
+          durata_validita_anni?: number | null
+          id?: string
+          livello_specifico?: string
+          macro_categoria?: string
+          nome_corso?: string
+          ore_minime_legge?: number | null
+          updated_at?: string
+        }
+        Relationships: []
+      }
     }
     Views: {
       [_ in never]: never
