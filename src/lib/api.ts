@@ -123,10 +123,9 @@ export async function creaAttestato(input: {
   return data;
 }
 
-export async function aggiornaAttestato(
-  id: string,
-  patch: Partial<Attestato>,
-) {
+type AttestatoPatch = Partial<Omit<Attestato, "dipendenti" | "tipi_corso">>;
+
+export async function aggiornaAttestato(id: string, patch: AttestatoPatch) {
   const { data, error } = await supabase
     .from("attestati_caricati")
     .update(patch)
