@@ -182,7 +182,7 @@ function StatCard({
   tone,
 }: {
   label: string;
-  value?: number;
+  value?: number | undefined;
   icon: typeof ShieldCheck;
   tone?: "warning" | "destructive";
 }) {
