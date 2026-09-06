@@ -92,21 +92,46 @@ function Home() {
 
       <section className="mx-auto max-w-6xl px-5 py-10">
         <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
-          <StatCard label="Dipendenti" value={stats?.dipendenti} icon={ShieldCheck} />
-          <StatCard label="Attestati" value={stats?.attestati} icon={FileCheck2} />
+          <StatCard
+            label="Dipendenti"
+            value={stats?.dipendenti}
+            icon={ShieldCheck}
+            to="/dipendenti"
+          />
+          <StatCard
+            label="Attestati"
+            value={stats?.attestati}
+            icon={FileCheck2}
+            to="/hr"
+          />
           <StatCard
             label="In attesa di validazione"
             value={stats?.attesa}
             icon={Clock}
             tone="warning"
+            to="/hr"
           />
           <StatCard
             label="Scaduti"
             value={stats?.scaduti}
             icon={AlertTriangle}
             tone="destructive"
+            to="/scadenze"
           />
         </div>
+
+        <div className="mt-6 flex flex-wrap gap-2">
+          <Button asChild variant="outline">
+            <Link to="/dipendenti">Gestione dipendenti</Link>
+          </Button>
+          <Button asChild variant="outline">
+            <Link to="/scadenze">Attestati scaduti</Link>
+          </Button>
+          <Button asChild variant="outline">
+            <Link to="/hr">Dashboard HR</Link>
+          </Button>
+        </div>
+
 
         <div className="mt-10 grid gap-6 lg:grid-cols-2">
           <div className="rounded-2xl border border-border bg-surface p-6 shadow-[var(--shadow-card)]">
