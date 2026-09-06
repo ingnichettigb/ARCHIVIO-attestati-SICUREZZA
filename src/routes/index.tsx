@@ -205,11 +205,13 @@ function StatCard({
   value,
   icon: Icon,
   tone,
+  to,
 }: {
   label: string;
   value?: number | undefined;
   icon: typeof ShieldCheck;
   tone?: "warning" | "destructive";
+  to: "/dipendenti" | "/scadenze" | "/hr";
 }) {
   const toneClass =
     tone === "warning"
@@ -218,7 +220,10 @@ function StatCard({
         ? "text-destructive"
         : "text-primary";
   return (
-    <div className="rounded-2xl border border-border bg-surface p-5 shadow-[var(--shadow-card)]">
+    <Link
+      to={to}
+      className="block rounded-2xl border border-border bg-surface p-5 shadow-[var(--shadow-card)] transition-colors hover:border-primary/40 hover:bg-muted/40"
+    >
       <div className="flex items-center justify-between">
         <span className="text-sm text-muted-foreground">{label}</span>
         <Icon className={`size-4 ${toneClass}`} />
@@ -226,6 +231,6 @@ function StatCard({
       <p className="mt-3 font-display text-3xl font-semibold tabular-nums">
         {value ?? "—"}
       </p>
-    </div>
+    </Link>
   );
 }
