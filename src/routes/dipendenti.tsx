@@ -1,0 +1,326 @@
+import { createFileRoute, Link } from "@tanstack/react-router";
+import { useMemo, useState } from "react";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { toast } from "sonner";
+import { ArrowLeft, Loader2, Plus, Search, Users } from "lucide-react";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { BackupBar } from "@/components/BackupBar";
+import {
+  formatData,
+  getAttestati,
+  getDipendenti,
+  scaduto,
+  statoBadgeClass,
+  upsertDipendente,
+  type Dipendente,
+} from "@/lib/api";
+
+export const Route = createFileRoute("/dipendenti")({
+  head: () => ({
+    meta: [
+      { title: "Dipendenti — Archivio Attestati Sicurezza" },
+      {
+        name: "description",
+        content:
+          "Elenco completo dei dipendenti con ricerca, inserimento di nuovi nominativi e storico degli attestati di formazione con relative scadenze.",
+      },
+      { property: "og:title", content: "Dipendenti e attestati" },
+      {
+        property: "og:description",
+        content:
+          "Cerca un dipendente, aggiungi nominativi e consulta lo storico dei suoi attestati di sicurezza.",
+      },
+    ],
+  }),
+  component: DipendentiPage,
+});
+
+const VUOTO: Omit<Dipendente, "id"> = {
+  codice_fiscale: "",
+  cognome: "",
+  nome: "",
+  email: "",
+  reparto: "",
+  luogo_nascita: "",
+  data_nascita: "",
+};
+
+function DipendentiPage() {
+  const qc = useQueryClient();
+  const [q, setQ] = useState("");
+  const [sel, setSel] = useState<string | null>(null);
+  const [form, setForm] = useState<Omit<Dipendente, "id"> | null>(null);
+  const [saving, setSaving] = useState(false);
+
+  const { data: dipendenti = [], isLoading } = useQuery({
+    queryKey: ["dipendenti"],
+    queryFn: getDipendenti,
+  });
+  const { data: attestati = [] } = useQuery({
+    queryKey: ["attestati", "Tutti"],
+    queryFn: () => getAttestati("Tutti"),
+  });
+
+  const filtrati = useMemo(() => {
+    const t = q.trim().toLowerCase();
+    if (!t) return dipendenti;
+    return dipendenti.filter((d) =>
+      `${d.cognome} ${d.nome} ${d.codice_fiscale} ${d.reparto ?? ""}`
+        .toLowerCase()
+        .includes(t),
+    );
+  }, [dipendenti, q]);
+
+  const corrente = dipendenti.find((d) => d.id === sel) ?? null;
+  const suoi = attestati.filter((a) => a.dipendente_id === sel);
+
+  async function salva() {
+    if (!form) return;
+    if (!form.codice_fiscale.trim() || !form.cognome.trim() || !form.nome.trim()) {
+      toast.error("Cognome, nome e codice fiscale sono obbligatori");
+      return;
+    }
+    setSaving(true);
+    try {
+      await upsertDipendente(form);
+      toast.success("Dipendente salvato");
+      setForm(null);
+      qc.invalidateQueries({ queryKey: ["dipendenti"] });
+      qc.invalidateQueries({ queryKey: ["stats"] });
+    } catch (e) {
+      toast.error((e as Error).message);
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  return (
+    <main className="min-h-screen bg-background">
+      <header className="border-b border-border bg-surface">
+        <div className="mx-auto flex max-w-[1400px] flex-wrap items-center justify-between gap-4 px-5 py-4">
+          <div className="flex items-center gap-3">
+            <Link to="/" aria-label="Torna alla home">
+              <ArrowLeft className="size-5 text-muted-foreground" />
+            </Link>
+            <span className="grid size-10 place-items-center rounded-xl bg-primary text-primary-foreground">
+              <Users className="size-5" />
+            </span>
+            <div>
+              <h1 className="text-lg font-semibold">Dipendenti</h1>
+              <p className="text-xs text-muted-foreground">
+                {dipendenti.length} nominativi in archivio
+              </p>
+            </div>
+          </div>
+          <BackupBar />
+        </div>
+      </header>
+
+      <section className="mx-auto grid max-w-[1400px] gap-6 px-5 py-6 lg:grid-cols-[1fr_1.2fr]">
+        <div className="rounded-2xl border border-border bg-surface p-4 shadow-[var(--shadow-card)]">
+          <div className="flex flex-wrap items-center gap-2">
+            <div className="relative flex-1 min-w-[200px]">
+              <Search className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
+              <Input
+                value={q}
+                onChange={(e) => setQ(e.target.value)}
+                placeholder="Cerca per cognome, nome, CF o reparto"
+                className="pl-9"
+              />
+            </div>
+            <Button onClick={() => setForm({ ...VUOTO })}>
+              <Plus className="size-4" /> Nuovo
+            </Button>
+          </div>
+
+          {isLoading ? (
+            <div className="flex items-center gap-2 py-10 text-sm text-muted-foreground">
+              <Loader2 className="size-4 animate-spin" /> Caricamento…
+            </div>
+          ) : (
+            <ul className="mt-4 max-h-[65vh] divide-y divide-border overflow-auto rounded-lg border border-border">
+              {filtrati.map((d) => {
+                const n = attestati.filter((a) => a.dipendente_id === d.id).length;
+                return (
+                  <li key={d.id}>
+                    <button
+                      onClick={() => setSel(d.id)}
+                      className={`flex w-full items-center justify-between gap-3 px-3 py-2.5 text-left text-sm hover:bg-muted/50 ${
+                        sel === d.id ? "bg-muted" : ""
+                      }`}
+                    >
+                      <span>
+                        <span className="font-medium">
+                          {d.cognome} {d.nome}
+                        </span>
+                        <span className="block text-xs text-muted-foreground">
+                          {d.codice_fiscale}
+                          {d.reparto ? ` · ${d.reparto}` : ""}
+                        </span>
+                      </span>
+                      <span className="shrink-0 rounded-full border border-border px-2 py-0.5 text-xs text-muted-foreground">
+                        {n} attestati
+                      </span>
+                    </button>
+                  </li>
+                );
+              })}
+              {!filtrati.length && (
+                <li className="px-3 py-8 text-center text-sm text-muted-foreground">
+                  Nessun dipendente trovato
+                </li>
+              )}
+            </ul>
+          )}
+        </div>
+
+        <div className="rounded-2xl border border-border bg-surface p-5 shadow-[var(--shadow-card)]">
+          {form ? (
+            <div className="space-y-4">
+              <h2 className="text-lg font-semibold">Nuovo dipendente</h2>
+              <div className="grid gap-3 sm:grid-cols-2">
+                <Campo
+                  label="Cognome"
+                  value={form.cognome}
+                  onChange={(v) => setForm({ ...form, cognome: v })}
+                />
+                <Campo
+                  label="Nome"
+                  value={form.nome}
+                  onChange={(v) => setForm({ ...form, nome: v })}
+                />
+                <Campo
+                  label="Codice fiscale"
+                  value={form.codice_fiscale}
+                  onChange={(v) => setForm({ ...form, codice_fiscale: v.toUpperCase() })}
+                />
+                <Campo
+                  label="Email"
+                  value={form.email ?? ""}
+                  onChange={(v) => setForm({ ...form, email: v })}
+                />
+                <Campo
+                  label="Reparto"
+                  value={form.reparto ?? ""}
+                  onChange={(v) => setForm({ ...form, reparto: v })}
+                />
+                <Campo
+                  label="Luogo di nascita"
+                  value={form.luogo_nascita ?? ""}
+                  onChange={(v) => setForm({ ...form, luogo_nascita: v })}
+                />
+                <Campo
+                  label="Data di nascita"
+                  type="date"
+                  value={form.data_nascita ?? ""}
+                  onChange={(v) => setForm({ ...form, data_nascita: v })}
+                />
+              </div>
+              <div className="flex gap-2">
+                <Button onClick={salva} disabled={saving}>
+                  {saving && <Loader2 className="size-4 animate-spin" />} Salva
+                </Button>
+                <Button variant="outline" onClick={() => setForm(null)}>
+                  Annulla
+                </Button>
+              </div>
+            </div>
+          ) : corrente ? (
+            <div className="space-y-4">
+              <div>
+                <h2 className="text-lg font-semibold">
+                  {corrente.cognome} {corrente.nome}
+                </h2>
+                <p className="text-sm text-muted-foreground">
+                  {corrente.codice_fiscale}
+                  {corrente.reparto ? ` · ${corrente.reparto}` : ""}
+                </p>
+                <p className="text-sm text-muted-foreground">
+                  Nato/a a {corrente.luogo_nascita || "—"} il{" "}
+                  {formatData(corrente.data_nascita)} · {corrente.email || "email non presente"}
+                </p>
+              </div>
+
+              <div className="overflow-auto rounded-lg border border-border">
+                <table className="w-full text-sm">
+                  <thead className="bg-muted/50 text-left text-xs text-muted-foreground">
+                    <tr>
+                      <th className="px-3 py-2">Corso</th>
+                      <th className="px-3 py-2">Data</th>
+                      <th className="px-3 py-2">Scadenza</th>
+                      <th className="px-3 py-2">Stato</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-border">
+                    {suoi.map((a) => (
+                      <tr key={a.id}>
+                        <td className="px-3 py-2">{a.tipi_corso?.nome_corso ?? "—"}</td>
+                        <td className="px-3 py-2">{formatData(a.data_corso)}</td>
+                        <td
+                          className={`px-3 py-2 ${
+                            scaduto(a.data_scadenza_calcolata)
+                              ? "font-medium text-destructive"
+                              : ""
+                          }`}
+                        >
+                          {a.data_scadenza_calcolata
+                            ? formatData(a.data_scadenza_calcolata)
+                            : "senza scadenza"}
+                        </td>
+                        <td className="px-3 py-2">
+                          <span
+                            className={`rounded-full border px-2 py-0.5 text-xs ${statoBadgeClass(
+                              a.stato_validazione,
+                            )}`}
+                          >
+                            {a.stato_validazione}
+                          </span>
+                        </td>
+                      </tr>
+                    ))}
+                    {!suoi.length && (
+                      <tr>
+                        <td
+                          colSpan={4}
+                          className="px-3 py-8 text-center text-muted-foreground"
+                        >
+                          Nessun attestato registrato
+                        </td>
+                      </tr>
+                    )}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          ) : (
+            <p className="py-16 text-center text-sm text-muted-foreground">
+              Seleziona un dipendente per vedere i suoi attestati, oppure aggiungine uno
+              nuovo.
+            </p>
+          )}
+        </div>
+      </section>
+    </main>
+  );
+}
+
+function Campo({
+  label,
+  value,
+  onChange,
+  type = "text",
+}: {
+  label: string;
+  value: string;
+  onChange: (v: string) => void;
+  type?: string;
+}) {
+  return (
+    <div className="space-y-1.5">
+      <Label>{label}</Label>
+      <Input type={type} value={value} onChange={(e) => onChange(e.target.value)} />
+    </div>
+  );
+}
