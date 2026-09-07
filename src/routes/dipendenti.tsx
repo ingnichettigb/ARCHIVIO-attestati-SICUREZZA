@@ -8,9 +8,12 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { BackupBar } from "@/components/BackupBar";
 import {
+  etichettaStato,
   formatData,
   getAttestati,
   getDipendenti,
+  riepilogoIncarichi,
+  scadenzaBadgeClass,
   scaduto,
   statoBadgeClass,
   upsertDipendente,
