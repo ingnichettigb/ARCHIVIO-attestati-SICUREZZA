@@ -246,6 +246,60 @@ function DipendentiPage() {
                 </p>
               </div>
 
+              <div className="space-y-3">
+                <h3 className="text-sm font-semibold">Incarichi e formazione</h3>
+                <div className="grid gap-3 sm:grid-cols-2">
+                  {riepilogoIncarichi(suoi).map((r) => (
+                    <div
+                      key={r.incarico.key}
+                      className={`rounded-xl border p-3 ${
+                        r.ricoperto ? "border-border bg-background" : "border-dashed border-border/70"
+                      }`}
+                    >
+                      <div className="flex items-center justify-between gap-2">
+                        <span className="text-sm font-medium">{r.incarico.label}</span>
+                        <span
+                          className={`rounded-full border px-2 py-0.5 text-[11px] ${scadenzaBadgeClass(
+                            r.peggiore,
+                          )}`}
+                        >
+                          {r.ricoperto ? etichettaStato(r.peggiore) : "Non incaricato"}
+                        </span>
+                      </div>
+                      <ul className="mt-2 space-y-1">
+                        {r.voci.map((v) => (
+                          <li
+                            key={v.livello}
+                            className="flex items-center justify-between gap-2 text-xs"
+                          >
+                            <span className="text-muted-foreground">{v.livello}</span>
+                            {v.attestato ? (
+                              <span className="text-right">
+                                {formatData(v.attestato.data_corso)}
+                                <span
+                                  className={`ml-2 rounded-full border px-1.5 py-0.5 ${scadenzaBadgeClass(
+                                    v.stato,
+                                  )}`}
+                                >
+                                  {v.attestato.data_scadenza_calcolata
+                                    ? `scade ${formatData(v.attestato.data_scadenza_calcolata)}`
+                                    : "senza scadenza"}
+                                </span>
+                              </span>
+                            ) : (
+                              <span className="text-muted-foreground/70">assente</span>
+                            )}
+                          </li>
+                        ))}
+                      </ul>
+                    </div>
+                  ))}
+                </div>
+              </div>
+
+              <h3 className="text-sm font-semibold">Tutti gli attestati</h3>
+
+
               <div className="overflow-auto rounded-lg border border-border">
                 <table className="w-full text-sm">
                   <thead className="bg-muted/50 text-left text-xs text-muted-foreground">
