@@ -183,11 +183,6 @@ function DipendentiPage() {
                   </li>
                 );
               })}
-
-                    </button>
-                  </li>
-                );
-              })}
               {!filtrati.length && (
                 <li className="px-3 py-8 text-center text-sm text-muted-foreground">
                   Nessun dipendente trovato
