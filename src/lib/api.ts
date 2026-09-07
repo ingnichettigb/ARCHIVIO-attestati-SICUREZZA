@@ -53,7 +53,7 @@ export async function getTipiCorso(): Promise<TipoCorso[]> {
 export async function getAttestati(stato?: Stato | "Tutti"): Promise<Attestato[]> {
   let q = supabase
     .from("attestati_caricati")
-    .select("*, dipendenti(*), tipi_corso(*)")
+    .select("*, dipendenti!attestati_caricati_dipendente_id_fkey(*), tipi_corso(*)")
     .order("created_at", { ascending: false })
     .limit(1000);
   if (stato && stato !== "Tutti") q = q.eq("stato_validazione", stato);
