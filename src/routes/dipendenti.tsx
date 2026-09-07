@@ -8,9 +8,12 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { BackupBar } from "@/components/BackupBar";
 import {
+  etichettaStato,
   formatData,
   getAttestati,
   getDipendenti,
+  riepilogoIncarichi,
+  scadenzaBadgeClass,
   scaduto,
   statoBadgeClass,
   upsertDipendente,
@@ -142,12 +145,13 @@ function DipendentiPage() {
           ) : (
             <ul className="mt-4 max-h-[65vh] divide-y divide-border overflow-auto rounded-lg border border-border">
               {filtrati.map((d) => {
-                const n = attestati.filter((a) => a.dipendente_id === d.id).length;
+                const suoiD = attestati.filter((a) => a.dipendente_id === d.id);
+                const ruoli = riepilogoIncarichi(suoiD).filter((r) => r.ricoperto);
                 return (
                   <li key={d.id}>
                     <button
                       onClick={() => setSel(d.id)}
-                      className={`flex w-full items-center justify-between gap-3 px-3 py-2.5 text-left text-sm hover:bg-muted/50 ${
+                      className={`flex w-full items-start justify-between gap-3 px-3 py-2.5 text-left text-sm hover:bg-muted/50 ${
                         sel === d.id ? "bg-muted" : ""
                       }`}
                     >
@@ -159,9 +163,21 @@ function DipendentiPage() {
                           {d.codice_fiscale}
                           {d.reparto ? ` · ${d.reparto}` : ""}
                         </span>
+                        <span className="mt-1 flex flex-wrap gap-1">
+                          {ruoli.map((r) => (
+                            <span
+                              key={r.incarico.key}
+                              className={`rounded-full border px-1.5 py-0.5 text-[10px] ${scadenzaBadgeClass(
+                                r.peggiore,
+                              )}`}
+                            >
+                              {r.incarico.label}
+                            </span>
+                          ))}
+                        </span>
                       </span>
                       <span className="shrink-0 rounded-full border border-border px-2 py-0.5 text-xs text-muted-foreground">
-                        {n} attestati
+                        {suoiD.length} attestati
                       </span>
                     </button>
                   </li>
@@ -242,6 +258,60 @@ function DipendentiPage() {
                   {formatData(corrente.data_nascita)} · {corrente.email || "email non presente"}
                 </p>
               </div>
+
+              <div className="space-y-3">
+                <h3 className="text-sm font-semibold">Incarichi e formazione</h3>
+                <div className="grid gap-3 sm:grid-cols-2">
+                  {riepilogoIncarichi(suoi).map((r) => (
+                    <div
+                      key={r.incarico.key}
+                      className={`rounded-xl border p-3 ${
+                        r.ricoperto ? "border-border bg-background" : "border-dashed border-border/70"
+                      }`}
+                    >
+                      <div className="flex items-center justify-between gap-2">
+                        <span className="text-sm font-medium">{r.incarico.label}</span>
+                        <span
+                          className={`rounded-full border px-2 py-0.5 text-[11px] ${scadenzaBadgeClass(
+                            r.peggiore,
+                          )}`}
+                        >
+                          {r.ricoperto ? etichettaStato(r.peggiore) : "Non incaricato"}
+                        </span>
+                      </div>
+                      <ul className="mt-2 space-y-1">
+                        {r.voci.map((v) => (
+                          <li
+                            key={v.livello}
+                            className="flex items-center justify-between gap-2 text-xs"
+                          >
+                            <span className="text-muted-foreground">{v.livello}</span>
+                            {v.attestato ? (
+                              <span className="text-right">
+                                {formatData(v.attestato.data_corso)}
+                                <span
+                                  className={`ml-2 rounded-full border px-1.5 py-0.5 ${scadenzaBadgeClass(
+                                    v.stato,
+                                  )}`}
+                                >
+                                  {v.attestato.data_scadenza_calcolata
+                                    ? `scade ${formatData(v.attestato.data_scadenza_calcolata)}`
+                                    : "senza scadenza"}
+                                </span>
+                              </span>
+                            ) : (
+                              <span className="text-muted-foreground/70">assente</span>
+                            )}
+                          </li>
+                        ))}
+                      </ul>
+                    </div>
+                  ))}
+                </div>
+              </div>
+
+              <h3 className="text-sm font-semibold">Tutti gli attestati</h3>
+
 
               <div className="overflow-auto rounded-lg border border-border">
                 <table className="w-full text-sm">
