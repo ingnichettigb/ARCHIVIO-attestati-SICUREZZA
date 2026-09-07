@@ -145,12 +145,13 @@ function DipendentiPage() {
           ) : (
             <ul className="mt-4 max-h-[65vh] divide-y divide-border overflow-auto rounded-lg border border-border">
               {filtrati.map((d) => {
-                const n = attestati.filter((a) => a.dipendente_id === d.id).length;
+                const suoiD = attestati.filter((a) => a.dipendente_id === d.id);
+                const ruoli = riepilogoIncarichi(suoiD).filter((r) => r.ricoperto);
                 return (
                   <li key={d.id}>
                     <button
                       onClick={() => setSel(d.id)}
-                      className={`flex w-full items-center justify-between gap-3 px-3 py-2.5 text-left text-sm hover:bg-muted/50 ${
+                      className={`flex w-full items-start justify-between gap-3 px-3 py-2.5 text-left text-sm hover:bg-muted/50 ${
                         sel === d.id ? "bg-muted" : ""
                       }`}
                     >
@@ -162,10 +163,27 @@ function DipendentiPage() {
                           {d.codice_fiscale}
                           {d.reparto ? ` · ${d.reparto}` : ""}
                         </span>
+                        <span className="mt-1 flex flex-wrap gap-1">
+                          {ruoli.map((r) => (
+                            <span
+                              key={r.incarico.key}
+                              className={`rounded-full border px-1.5 py-0.5 text-[10px] ${scadenzaBadgeClass(
+                                r.peggiore,
+                              )}`}
+                            >
+                              {r.incarico.label}
+                            </span>
+                          ))}
+                        </span>
                       </span>
                       <span className="shrink-0 rounded-full border border-border px-2 py-0.5 text-xs text-muted-foreground">
-                        {n} attestati
+                        {suoiD.length} attestati
                       </span>
+                    </button>
+                  </li>
+                );
+              })}
+
                     </button>
                   </li>
                 );
