@@ -130,7 +130,7 @@ export async function aggiornaAttestato(id: string, patch: AttestatoPatch) {
     .from("attestati_caricati")
     .update(patch)
     .eq("id", id)
-    .select("*, dipendenti(*), tipi_corso(*)")
+    .select("*, dipendenti!attestati_caricati_dipendente_id_fkey(*), tipi_corso(*)")
     .single();
   if (error) throw error;
   return data as unknown as Attestato;
