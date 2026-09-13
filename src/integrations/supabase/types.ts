@@ -126,6 +126,53 @@ export type Database = {
         }
         Relationships: []
       }
+      documenti_attestati: {
+        Row: {
+          codice_fiscale: string
+          created_at: string
+          data_scadenza: string
+          dipendente_id: string
+          id: string
+          nome_file: string
+          percorso_file: string
+          tipo_attestato: string
+          tipo_personalizzato: string | null
+          updated_at: string
+        }
+        Insert: {
+          codice_fiscale: string
+          created_at?: string
+          data_scadenza: string
+          dipendente_id: string
+          id?: string
+          nome_file: string
+          percorso_file: string
+          tipo_attestato: string
+          tipo_personalizzato?: string | null
+          updated_at?: string
+        }
+        Update: {
+          codice_fiscale?: string
+          created_at?: string
+          data_scadenza?: string
+          dipendente_id?: string
+          id?: string
+          nome_file?: string
+          percorso_file?: string
+          tipo_attestato?: string
+          tipo_personalizzato?: string | null
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "documenti_attestati_dipendente_id_fkey"
+            columns: ["dipendente_id"]
+            isOneToOne: false
+            referencedRelation: "dipendenti"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       tipi_corso: {
         Row: {
           created_at: string
