@@ -364,3 +364,186 @@ export function riepilogoIncarichi(attestati: Attestato[]): RiepilogoIncarico[] 
     return { incarico, voci, ricoperto, peggiore };
   });
 }
+
+/* ---------------- Documenti PDF attestati ---------------- */
+
+export const CARTELLA_ARCHIVIO = "Archivio Attestati Sicurezza";
+
+export const TIPI_ATTESTATO_PDF = [
+  "Sicurezza Lavoratori",
+  "Preposto",
+  "Primo Soccorso",
+  "Antincendio",
+  "Defibrillatore",
+  "Altro",
+] as const;
+
+export type DocumentoAttestato = {
+  id: string;
+  dipendente_id: string;
+  codice_fiscale: string;
+  tipo_attestato: string;
+  tipo_personalizzato: string | null;
+  data_scadenza: string;
+  nome_file: string;
+  percorso_file: string;
+  created_at: string;
+};
+
+/** Normalizza un testo: maiuscolo, senza accenti, spazi -> underscore. */
+export function normalizzaNome(s: string) {
+  return s
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .toUpperCase()
+    .replace(/[^A-Z0-9]+/g, "_")
+    .replace(/^_+|_+$/g, "");
+}
+
+export function nomeFilePdf(
+  cognome: string,
+  nome: string,
+  tipo: string,
+  dataScadenza: string,
+) {
+  const data = dataScadenza.slice(0, 10).replace(/-/g, "");
+  return `${normalizzaNome(cognome)}_${normalizzaNome(nome)}_${normalizzaNome(tipo)}_${data}.pdf`;
+}
+
+export function cartellaDipendente(d: Dipendente) {
+  return `${normalizzaNome(d.cognome)}_${normalizzaNome(d.nome)}_${d.codice_fiscale.toUpperCase()}`;
+}
+
+export async function getDocumenti(dipendenteId: string): Promise<DocumentoAttestato[]> {
+  const { data, error } = await supabase
+    .from("documenti_attestati")
+    .select("*")
+    .eq("dipendente_id", dipendenteId)
+    .order("created_at", { ascending: false });
+  if (error) throw error;
+  return (data ?? []) as DocumentoAttestato[];
+}
+
+export async function caricaDocumento(input: {
+  dipendente: Dipendente;
+  tipo: string;
+  tipoPersonalizzato?: string | null;
+  dataScadenza: string;
+  file: File;
+}) {
+  const etichetta =
+    input.tipo === "Altro" && input.tipoPersonalizzato
+      ? input.tipoPersonalizzato
+      : input.tipo;
+  const nome = nomeFilePdf(
+    input.dipendente.cognome,
+    input.dipendente.nome,
+    etichetta,
+    input.dataScadenza,
+  );
+  const percorso = `${CARTELLA_ARCHIVIO}/${cartellaDipendente(input.dipendente)}/${nome}`;
+
+  const { error: upErr } = await supabase.storage
+    .from("attestati")
+    .upload(percorso, input.file, { upsert: true, contentType: "application/pdf" });
+  if (upErr) throw upErr;
+
+  const { data, error } = await supabase
+    .from("documenti_attestati")
+    .insert({
+      dipendente_id: input.dipendente.id,
+      codice_fiscale: input.dipendente.codice_fiscale,
+      tipo_attestato: input.tipo,
+      tipo_personalizzato: input.tipo === "Altro" ? (input.tipoPersonalizzato ?? null) : null,
+      data_scadenza: input.dataScadenza,
+      nome_file: nome,
+      percorso_file: percorso,
+    })
+    .select()
+    .single();
+  if (error) throw error;
+  return data as DocumentoAttestato;
+}
+
+export async function eliminaDocumento(doc: DocumentoAttestato) {
+  await supabase.storage.from("attestati").remove([doc.percorso_file]);
+  const { error } = await supabase
+    .from("documenti_attestati")
+    .delete()
+    .eq("id", doc.id);
+  if (error) throw error;
+}
+
+export async function urlDocumento(percorso: string) {
+  const { data, error } = await supabase.storage
+    .from("attestati")
+    .createSignedUrl(percorso, 60 * 60);
+  if (error) throw error;
+  return data?.signedUrl ?? null;
+}
+
+/* --- Copia locale tramite File System Access API --- */
+
+type DirHandle = {
+  getDirectoryHandle: (n: string, o?: { create?: boolean }) => Promise<DirHandle>;
+  getFileHandle: (
+    n: string,
+    o?: { create?: boolean },
+  ) => Promise<{
+    createWritable: () => Promise<{
+      write: (b: Blob) => Promise<void>;
+      close: () => Promise<void>;
+    }>;
+  }>;
+};
+
+let cartellaLocale: DirHandle | null = null;
+
+export function supportaCartellaLocale() {
+  return typeof window !== "undefined" && "showDirectoryPicker" in window;
+}
+
+export async function scegliCartellaLocale(): Promise<DirHandle | null> {
+  if (cartellaLocale) return cartellaLocale;
+  const w = window as unknown as {
+    showDirectoryPicker?: (o?: unknown) => Promise<DirHandle>;
+  };
+  if (!w.showDirectoryPicker) return null;
+  const scelta = await w.showDirectoryPicker({
+    id: "archivio-attestati",
+    mode: "readwrite",
+    startIn: "documents",
+  });
+  // Se l'utente sceglie la cartella Documenti, usa/crea la sottocartella dedicata.
+  const nomeScelta = (scelta as unknown as { name?: string }).name ?? "";
+  cartellaLocale =
+    nomeScelta === CARTELLA_ARCHIVIO
+      ? scelta
+      : await scelta.getDirectoryHandle(CARTELLA_ARCHIVIO, { create: true });
+  return cartellaLocale;
+}
+
+/** Scrive il PDF nella cartella locale; chiede conferma se il file esiste già. */
+export async function salvaInLocale(
+  file: File,
+  nomeFile: string,
+  sottocartella: string,
+) {
+  const root = await scegliCartellaLocale();
+  if (!root) throw new Error("Cartella non disponibile");
+  const dir = await root.getDirectoryHandle(sottocartella, { create: true });
+  let esiste = false;
+  try {
+    await dir.getFileHandle(nomeFile);
+    esiste = true;
+  } catch {
+    esiste = false;
+  }
+  if (esiste && !window.confirm(`"${nomeFile}" esiste già nella cartella locale. Sovrascrivere?`))
+    return false;
+  const handle = await dir.getFileHandle(nomeFile, { create: true });
+  const w = await handle.createWritable();
+  await w.write(file);
+  await w.close();
+  return true;
+}
