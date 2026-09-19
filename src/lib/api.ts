@@ -14,6 +14,12 @@ export type Dipendente = {
   nome: string;
   email: string | null;
   reparto: string | null;
+  /** Sottoreparto scelto dentro il reparto (es. "Assistente amministrativo" per ATA). */
+  sottoreparto: string | null;
+  /** Solo per i reparti che la richiedono (es. Docente): es. "A-26". */
+  classe_concorso: string | null;
+  /** Materia insegnata, testo libero con suggerimenti. */
+  materia: string | null;
   luogo_nascita: string | null;
   data_nascita: string | null;
 };
@@ -64,6 +70,17 @@ export type Reparto = {
   nome: string;
   ordine: number;
   attivo: boolean;
+  /** Se vero, nel modulo il lavoratore deve indicare classe di concorso e materia. */
+  richiede_classe_concorso: boolean;
+};
+
+export type Sottoreparto = {
+  id: string;
+  reparto_id: string;
+  codice: string | null;
+  nome: string;
+  ordine: number;
+  attivo: boolean;
 };
 
 /** Elenco completo dei reparti (attivi e non). Lancia errore se la tabella non esiste. */
@@ -93,6 +110,154 @@ export async function eliminaReparto(id: string) {
   if (error) throw error;
 }
 
+/** Attiva/disattiva la richiesta di classe di concorso e materia per un reparto. */
+export async function impostaRepartoClasseConcorso(id: string, richiede: boolean) {
+  const { error } = await sb
+    .from("reparti")
+    .update({ richiede_classe_concorso: richiede })
+    .eq("id", id);
+  if (error) throw error;
+}
+
+/** Aggiornamento libero di un reparto (usato dalla tabella di modifica avanzata). */
+export async function aggiornaReparto(
+  id: string,
+  patch: Partial<Pick<Reparto, "nome" | "ordine" | "attivo" | "richiede_classe_concorso">>,
+) {
+  const pulito = { ...patch };
+  if (typeof pulito.nome === "string") {
+    pulito.nome = pulito.nome.trim();
+    if (!pulito.nome) throw new Error("Il nome non può essere vuoto");
+  }
+  const { error } = await sb.from("reparti").update(pulito).eq("id", id);
+  if (error) {
+    if (error.code === "23505") throw new Error(`"${pulito.nome}" è già presente`);
+    throw error;
+  }
+}
+
+/* -------- Sottoreparti (es. ATA -> AA, AT, CS, DSGA) -------- */
+
+/** Tutti i sottoreparti, di tutti i reparti. */
+export async function getSottoreparti(): Promise<Sottoreparto[]> {
+  const { data, error } = await sb.from("sottoreparti").select("*").order("ordine").order("nome");
+  if (error) throw error;
+  return (data ?? []) as Sottoreparto[];
+}
+
+export async function aggiungiSottoreparto(input: {
+  reparto_id: string;
+  nome: string;
+  codice?: string | null;
+  ordine: number;
+}) {
+  const nome = input.nome.trim();
+  if (!nome) throw new Error("Scrivi il nome del sottoreparto");
+  const { error } = await sb.from("sottoreparti").insert({
+    reparto_id: input.reparto_id,
+    nome,
+    codice: input.codice?.trim().toUpperCase() || null,
+    ordine: input.ordine,
+  });
+  if (error) {
+    if (error.code === "23505") throw new Error(`"${nome}" è già presente in questo reparto`);
+    throw error;
+  }
+}
+
+export async function impostaSottorepartoAttivo(id: string, attivo: boolean) {
+  const { error } = await sb.from("sottoreparti").update({ attivo }).eq("id", id);
+  if (error) throw error;
+}
+
+export async function eliminaSottoreparto(id: string) {
+  const { error } = await sb.from("sottoreparti").delete().eq("id", id);
+  if (error) throw error;
+}
+
+/** Etichetta leggibile: "AA — Assistente amministrativo". */
+export function etichettaSottoreparto(s: Pick<Sottoreparto, "codice" | "nome">) {
+  return s.codice ? `${s.codice} — ${s.nome}` : s.nome;
+}
+
+/* ---- Classi di concorso e materie: il database cresce a ogni invio ---- */
+
+export type ClasseConcorso = {
+  id: string;
+  codice: string;
+  denominazione: string | null;
+  usi: number;
+  da_lavoratore: boolean;
+  attivo: boolean;
+};
+
+export type Materia = {
+  id: string;
+  nome: string;
+  classe_concorso: string | null;
+  usi: number;
+  da_lavoratore: boolean;
+  attivo: boolean;
+};
+
+export async function getClassiConcorso(): Promise<ClasseConcorso[]> {
+  const { data, error } = await sb.from("classi_concorso").select("*").order("codice");
+  if (error) throw error;
+  return (data ?? []) as ClasseConcorso[];
+}
+
+export async function getMaterie(): Promise<Materia[]> {
+  const { data, error } = await sb
+    .from("materie")
+    .select("*")
+    .order("usi", { ascending: false })
+    .order("nome");
+  if (error) throw error;
+  return (data ?? []) as Materia[];
+}
+
+export async function aggiungiClasseConcorso(codice: string, denominazione?: string | null) {
+  const c = codice.trim().toUpperCase();
+  if (!c) throw new Error("Scrivi il codice della classe di concorso");
+  const { error } = await sb
+    .from("classi_concorso")
+    .insert({ codice: c, denominazione: denominazione?.trim() || null });
+  if (error) {
+    if (error.code === "23505") throw new Error(`"${c}" è già presente`);
+    throw error;
+  }
+}
+
+export async function impostaClasseAttiva(id: string, attivo: boolean) {
+  const { error } = await sb.from("classi_concorso").update({ attivo }).eq("id", id);
+  if (error) throw error;
+}
+
+export async function eliminaClasseConcorso(id: string) {
+  const { error } = await sb.from("classi_concorso").delete().eq("id", id);
+  if (error) throw error;
+}
+
+export async function eliminaMateria(id: string) {
+  const { error } = await sb.from("materie").delete().eq("id", id);
+  if (error) throw error;
+}
+
+/**
+ * Salva nel database quello che il lavoratore ha scritto, così la prossima
+ * persona se lo ritrova già pronto fra i suggerimenti. Non blocca mai l'invio.
+ */
+export async function registraClasseEMateria(classe?: string | null, materia?: string | null) {
+  const c = (classe ?? "").trim();
+  const m = (materia ?? "").trim();
+  try {
+    if (c) await sb.rpc("registra_classe_concorso", { p_codice: c, p_denominazione: null });
+    if (m) await sb.rpc("registra_materia", { p_nome: m, p_classe: c || null });
+  } catch {
+    /* il database dei suggerimenti non è critico: si ignora l'errore */
+  }
+}
+
 /** Vero se il testo del reparto è leggibile (esclude vuoti e date importate male da Excel). */
 export function repartoLeggibile(v: string | null | undefined): v is string {
   const t = (v ?? "").trim();
@@ -100,12 +265,42 @@ export function repartoLeggibile(v: string | null | undefined): v is string {
 }
 
 /** Cambia il reparto di un dipendente già in archivio. */
-export async function aggiornaRepartoDipendente(id: string, reparto: string | null) {
-  const { error } = await supabase
+export async function aggiornaRepartoDipendente(
+  id: string,
+  reparto: string | null,
+  sottoreparto: string | null = null,
+) {
+  const { error } = await sb
     .from("dipendenti")
-    .update({ reparto: reparto || null })
+    .update({ reparto: reparto || null, sottoreparto: sottoreparto || null })
     .eq("id", id);
   if (error) throw error;
+}
+
+/** Aggiorna solo il sottoreparto (il reparto resta quello che è). */
+export async function aggiornaSottorepartoDipendente(id: string, sottoreparto: string | null) {
+  const { error } = await sb
+    .from("dipendenti")
+    .update({ sottoreparto: sottoreparto || null })
+    .eq("id", id);
+  if (error) throw error;
+}
+
+/** Aggiorna classe di concorso e materia di un docente già in archivio. */
+export async function aggiornaInsegnamentoDipendente(
+  id: string,
+  classe_concorso: string | null,
+  materia: string | null,
+) {
+  const { error } = await sb
+    .from("dipendenti")
+    .update({
+      classe_concorso: classe_concorso?.trim().toUpperCase() || null,
+      materia: materia?.trim() || null,
+    })
+    .eq("id", id);
+  if (error) throw error;
+  await registraClasseEMateria(classe_concorso, materia);
 }
 
 /* ------- Categorie di corso mostrate al lavoratore nel modulo ------- */
@@ -183,11 +378,7 @@ export async function getAttestati(stato?: Stato | "Tutti"): Promise<Attestato[]
 }
 
 export async function getDipendenti(): Promise<Dipendente[]> {
-  const { data, error } = await supabase
-    .from("dipendenti")
-    .select("*")
-    .order("cognome")
-    .limit(2000);
+  const { data, error } = await sb.from("dipendenti").select("*").order("cognome").limit(2000);
   if (error) throw error;
   return (data ?? []) as Dipendente[];
 }
@@ -197,8 +388,11 @@ export async function upsertDipendente(d: Omit<Dipendente, "id">): Promise<Dipen
     ...d,
     codice_fiscale: d.codice_fiscale.trim().toUpperCase(),
     data_nascita: d.data_nascita || null,
+    sottoreparto: d.sottoreparto?.trim() || null,
+    classe_concorso: d.classe_concorso?.trim().toUpperCase() || null,
+    materia: d.materia?.trim() || null,
   };
-  const { data, error } = await supabase
+  const { data, error } = await sb
     .from("dipendenti")
     .upsert(payload, { onConflict: "codice_fiscale" })
     .select()
@@ -306,21 +500,27 @@ export function apriEmailEsito(a: Attestato, esito: Stato): boolean {
 
 /** Esporta l'intero database in un file JSON salvato sul dispositivo. */
 export async function esportaDb() {
-  const [dip, tipi, att, rep, cat] = await Promise.all([
+  const [dip, tipi, att, rep, sot, cat, classi, mat] = await Promise.all([
     supabase.from("dipendenti").select("*").limit(5000),
     supabase.from("tipi_corso").select("*"),
     supabase.from("attestati_caricati").select("*").limit(20000),
     sb.from("reparti").select("*"),
+    sb.from("sottoreparti").select("*"),
     sb.from("categorie_corso").select("*"),
+    sb.from("classi_concorso").select("*"),
+    sb.from("materie").select("*"),
   ]);
   const dump = {
     esportato_il: new Date().toISOString(),
-    versione: 2,
+    versione: 3,
     dipendenti: dip.data ?? [],
     tipi_corso: tipi.data ?? [],
     attestati_caricati: att.data ?? [],
     reparti: rep.data ?? [],
+    sottoreparti: sot.data ?? [],
     categorie_corso: cat.data ?? [],
+    classi_concorso: classi.data ?? [],
+    materie: mat.data ?? [],
   };
   const blob = new Blob([JSON.stringify(dump, null, 2)], {
     type: "application/json",
@@ -380,6 +580,15 @@ export async function importaDb(file: File) {
   // Reparti e categorie (ignorati se le tabelle non esistono ancora)
   if (Array.isArray(dump.reparti) && dump.reparti.length) {
     await sb.from("reparti").upsert(dump.reparti, { onConflict: "nome" });
+  }
+  if (Array.isArray(dump.sottoreparti) && dump.sottoreparti.length) {
+    await sb.from("sottoreparti").upsert(dump.sottoreparti, { onConflict: "id" });
+  }
+  if (Array.isArray(dump.classi_concorso) && dump.classi_concorso.length) {
+    await sb.from("classi_concorso").upsert(dump.classi_concorso, { onConflict: "codice" });
+  }
+  if (Array.isArray(dump.materie) && dump.materie.length) {
+    await sb.from("materie").upsert(dump.materie, { onConflict: "id" });
   }
   if (Array.isArray(dump.categorie_corso) && dump.categorie_corso.length) {
     await sb
