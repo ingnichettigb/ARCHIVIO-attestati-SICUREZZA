@@ -4,7 +4,14 @@ import { useQuery } from "@tanstack/react-query";
 import { AlertTriangle, ArrowLeft, Loader2, Search } from "lucide-react";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
-import { formatData, getAttestati, scaduto } from "@/lib/api";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
+import { formatData, getAttestati, repartoLeggibile, scaduto } from "@/lib/api";
 
 export const Route = createFileRoute("/scadenze")({
   head: () => ({
@@ -28,20 +35,38 @@ export const Route = createFileRoute("/scadenze")({
 
 type Vista = "Scaduti" | "In scadenza (90 gg)" | "Tutti con scadenza";
 
+const TUTTI = "__tutti__";
+
 function ScadenzePage() {
   const [vista, setVista] = useState<Vista>("Scaduti");
   const [q, setQ] = useState("");
+  const [reparto, setReparto] = useState(TUTTI);
 
   const { data: attestati = [], isLoading } = useQuery({
     queryKey: ["attestati", "Tutti"],
     queryFn: () => getAttestati("Tutti"),
   });
 
+  const reparti = useMemo(() => {
+    const set = new Map<string, string>();
+    for (const a of attestati) {
+      const r = a.dipendenti?.reparto;
+      if (repartoLeggibile(r) && !set.has(r.trim().toLowerCase()))
+        set.set(r.trim().toLowerCase(), r.trim());
+    }
+    return Array.from(set.values()).sort((a, b) => a.localeCompare(b, "it"));
+  }, [attestati]);
+
   const righe = useMemo(() => {
     const oggi = new Date();
     const limite = new Date();
     limite.setDate(limite.getDate() + 90);
-    const base = attestati.filter((a) => a.data_scadenza_calcolata);
+    const base = attestati.filter(
+      (a) =>
+        a.data_scadenza_calcolata &&
+        (reparto === TUTTI ||
+          (a.dipendenti?.reparto ?? "").trim().toLowerCase() === reparto.toLowerCase()),
+    );
     const filtrate = base.filter((a) => {
       const d = new Date(a.data_scadenza_calcolata as string);
       if (vista === "Scaduti") return d < oggi;
@@ -61,7 +86,7 @@ function ScadenzePage() {
     return cercate.sort((a, b) =>
       (a.data_scadenza_calcolata ?? "").localeCompare(b.data_scadenza_calcolata ?? ""),
     );
-  }, [attestati, vista, q]);
+  }, [attestati, vista, q, reparto]);
 
   return (
     <main className="min-h-screen bg-background">
@@ -94,7 +119,20 @@ function ScadenzePage() {
               {v}
             </Button>
           ))}
-          <div className="relative ml-auto min-w-[220px] flex-1 sm:flex-none">
+          <Select value={reparto} onValueChange={setReparto}>
+            <SelectTrigger className="ml-auto w-[170px]">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value={TUTTI}>Tutti i reparti</SelectItem>
+              {reparti.map((r) => (
+                <SelectItem key={r} value={r}>
+                  {r}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+          <div className="relative min-w-[220px] flex-1 sm:flex-none">
             <Search className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
             <Input
               value={q}
