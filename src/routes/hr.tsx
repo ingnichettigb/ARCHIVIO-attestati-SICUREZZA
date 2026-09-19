@@ -2,8 +2,9 @@ import { createFileRoute, Link } from "@tanstack/react-router";
 import { useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
-import { ArrowLeft, Loader2, ShieldCheck, Check, X } from "lucide-react";
+import { ArrowLeft, Loader2, ShieldCheck, Check, X, Mail } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { Checkbox } from "@/components/ui/checkbox";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
@@ -16,13 +17,14 @@ import {
 } from "@/components/ui/select";
 import { ImageViewer } from "@/components/ImageViewer";
 import { BackupBar } from "@/components/BackupBar";
+import { ImpostazioniDialog } from "@/components/ImpostazioniDialog";
 import {
   aggiornaAttestato,
+  apriEmailEsito,
   formatData,
   getAttestati,
   getTipiCorso,
   scaduto,
-  simulaEmail,
   statoBadgeClass,
   type Attestato,
   type Stato,
@@ -84,12 +86,13 @@ function HrPage() {
             </span>
             <div>
               <h1 className="font-display text-base font-semibold">Dashboard HR</h1>
-              <p className="text-xs text-muted-foreground">
-                Validazione attestati di formazione
-              </p>
+              <p className="text-xs text-muted-foreground">Validazione attestati di formazione</p>
             </div>
           </div>
-          <BackupBar onImported={refresh} />
+          <div className="flex flex-wrap items-center gap-2">
+            <ImpostazioniDialog />
+            <BackupBar onImported={refresh} />
+          </div>
         </div>
       </header>
 
@@ -148,13 +151,14 @@ function HrPage() {
                 <p className="mt-1 text-xs text-muted-foreground">
                   {a.tipi_corso?.nome_corso ?? "—"}
                 </p>
+                {a.dipendenti?.reparto && (
+                  <p className="mt-1 text-xs text-muted-foreground">
+                    Reparto: {a.dipendenti.reparto}
+                  </p>
+                )}
                 <p className="mt-1 text-xs text-muted-foreground">
                   Corso del {formatData(a.data_corso)} · scadenza{" "}
-                  <span
-                    className={
-                      scaduto(a.data_scadenza_calcolata) ? "text-destructive" : ""
-                    }
-                  >
+                  <span className={scaduto(a.data_scadenza_calcolata) ? "text-destructive" : ""}>
                     {formatData(a.data_scadenza_calcolata)}
                   </span>
                 </p>
@@ -164,12 +168,7 @@ function HrPage() {
         </aside>
 
         {corrente ? (
-          <Dettaglio
-            key={corrente.id}
-            attestato={corrente}
-            corsi={corsi}
-            onChanged={refresh}
-          />
+          <Dettaglio key={corrente.id} attestato={corrente} corsi={corsi} onChanged={refresh} />
         ) : (
           <div className="grid min-h-96 place-items-center rounded-2xl border border-dashed border-border text-sm text-muted-foreground">
             Seleziona un attestato dalla lista per validarlo.
@@ -198,6 +197,8 @@ function Dettaglio({
   const [mostraNote, setMostraNote] = useState(false);
   const [busy, setBusy] = useState(false);
   const d = attestato.dipendenti;
+  const haEmail = Boolean(d?.email?.trim());
+  const [inviaEmail, setInviaEmail] = useState(haEmail);
 
   async function decidi(esito: Stato) {
     if (esito === "Respinto" && !note.trim()) {
@@ -215,11 +216,19 @@ function Dettaglio({
         note_rifiuto: esito === "Respinto" ? note.trim() : null,
         data_validazione: new Date().toISOString(),
       });
-      simulaEmail(agg, esito);
-      toast.success(
-        esito === "Approvato" ? "Attestato approvato" : "Attestato respinto",
-        { description: "Email di esito simulata inviata al dipendente." },
-      );
+      let descrizione = "Esito salvato.";
+      if (inviaEmail) {
+        descrizione = apriEmailEsito(agg, esito)
+          ? "Si è aperta la tua app di posta con il messaggio già scritto: premi Invia."
+          : "Esito salvato, ma nessuna email preparata: il dipendente non ha un indirizzo email.";
+      }
+      toast.success(esito === "Approvato" ? "Attestato approvato" : "Attestato respinto", {
+        description: descrizione,
+        action:
+          inviaEmail && haEmail
+            ? { label: "Riapri email", onClick: () => apriEmailEsito(agg, esito) }
+            : undefined,
+      });
       onChanged();
     } catch (e) {
       toast.error("Operazione non riuscita", { description: String(e) });
@@ -244,10 +253,7 @@ function Dettaglio({
           <Info label="Luogo di nascita" value={d?.luogo_nascita ?? "—"} />
           <Info label="Data di nascita" value={formatData(d?.data_nascita)} />
           <Info label="Stato" value={attestato.stato_validazione} />
-          <Info
-            label="Scadenza"
-            value={formatData(attestato.data_scadenza_calcolata)}
-          />
+          <Info label="Scadenza" value={formatData(attestato.data_scadenza_calcolata)} />
         </dl>
 
         <div className="space-y-2">
@@ -269,20 +275,11 @@ function Dettaglio({
         <div className="grid grid-cols-2 gap-3">
           <div className="space-y-2">
             <Label>Data corso</Label>
-            <Input
-              type="date"
-              value={dataCorso}
-              onChange={(e) => setDataCorso(e.target.value)}
-            />
+            <Input type="date" value={dataCorso} onChange={(e) => setDataCorso(e.target.value)} />
           </div>
           <div className="space-y-2">
             <Label>Ore dichiarate</Label>
-            <Input
-              type="number"
-              step="0.5"
-              value={ore}
-              onChange={(e) => setOre(e.target.value)}
-            />
+            <Input type="number" step="0.5" value={ore} onChange={(e) => setOre(e.target.value)} />
           </div>
         </div>
 
@@ -298,6 +295,25 @@ function Dettaglio({
           </div>
         )}
 
+        <div className="rounded-xl border border-border bg-muted/30 p-3">
+          <label className="flex items-start gap-3 text-sm">
+            <Checkbox
+              checked={inviaEmail && haEmail}
+              disabled={!haEmail || busy}
+              onCheckedChange={(v) => setInviaEmail(v === true)}
+              className="mt-0.5"
+            />
+            <span>
+              <span className="font-medium">Invia email di esito al dipendente</span>
+              <span className="block text-xs text-muted-foreground">
+                {haEmail
+                  ? `Scritta per ${d?.email}: si apre la tua app di posta, tu premi Invia. Vale sia per approvato che per respinto (con il motivo).`
+                  : "Non disponibile: il dipendente non ha un'email in archivio."}
+              </span>
+            </span>
+          </label>
+        </div>
+
         <div className="flex flex-wrap gap-2">
           <Button onClick={() => decidi("Approvato")} disabled={busy}>
             {busy ? <Loader2 className="size-4 animate-spin" /> : <Check className="size-4" />}
@@ -311,14 +327,24 @@ function Dettaglio({
             <X className="size-4" />
             Respingi
           </Button>
+          {attestato.stato_validazione !== "In attesa" && (
+            <Button
+              variant="outline"
+              disabled={!haEmail}
+              onClick={() => {
+                if (!apriEmailEsito(attestato, attestato.stato_validazione))
+                  toast.error("Il dipendente non ha un'email in archivio");
+              }}
+            >
+              <Mail className="size-4" />
+              Invia di nuovo email di esito
+            </Button>
+          )}
         </div>
       </div>
 
       <div>
-        <ImageViewer
-          fronte={attestato.url_foto_fronte}
-          retro={attestato.url_foto_retro}
-        />
+        <ImageViewer fronte={attestato.url_foto_fronte} retro={attestato.url_foto_retro} />
       </div>
     </section>
   );
