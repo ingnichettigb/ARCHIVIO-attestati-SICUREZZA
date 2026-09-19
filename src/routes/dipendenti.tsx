@@ -6,12 +6,23 @@ import { ArrowLeft, Loader2, Plus, Search, Users } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { BackupBar } from "@/components/BackupBar";
 import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
+import { BackupBar } from "@/components/BackupBar";
+import { ImpostazioniDialog } from "@/components/ImpostazioniDialog";
+import {
+  aggiornaRepartoDipendente,
   etichettaStato,
   formatData,
   getAttestati,
   getDipendenti,
+  getReparti,
+  repartoLeggibile,
   riepilogoIncarichi,
   scadenzaBadgeClass,
   scaduto,
@@ -40,6 +51,9 @@ export const Route = createFileRoute("/dipendenti")({
   component: DipendentiPage,
 });
 
+const TUTTI = "__tutti__";
+const NESSUNO = "__nessuno__";
+
 const VUOTO: Omit<Dipendente, "id"> = {
   codice_fiscale: "",
   cognome: "",
@@ -56,7 +70,13 @@ function DipendentiPage() {
   const [sel, setSel] = useState<string | null>(null);
   const [form, setForm] = useState<Omit<Dipendente, "id"> | null>(null);
   const [saving, setSaving] = useState(false);
+  const [filtroReparto, setFiltroReparto] = useState(TUTTI);
 
+  const { data: repartiElenco = [] } = useQuery({
+    queryKey: ["reparti"],
+    queryFn: getReparti,
+    retry: false,
+  });
   const { data: dipendenti = [], isLoading } = useQuery({
     queryKey: ["dipendenti"],
     queryFn: getDipendenti,
@@ -66,15 +86,38 @@ function DipendentiPage() {
     queryFn: () => getAttestati("Tutti"),
   });
 
+  // Reparti scelti dal lavoratore nel modulo (solo quelli attivi).
+  const repartiAttivi = useMemo(
+    () => repartiElenco.filter((r) => r.attivo).map((r) => r.nome),
+    [repartiElenco],
+  );
+
+  // Per il filtro: elenco + valori già presenti nei dipendenti.
+  const repartiFiltro = useMemo(() => {
+    const set = new Map<string, string>();
+    for (const r of repartiElenco) set.set(r.nome.toLowerCase(), r.nome);
+    for (const d of dipendenti)
+      if (repartoLeggibile(d.reparto) && !set.has(d.reparto.trim().toLowerCase()))
+        set.set(d.reparto.trim().toLowerCase(), d.reparto.trim());
+    return Array.from(set.values()).sort((a, b) => a.localeCompare(b, "it"));
+  }, [repartiElenco, dipendenti]);
+
   const filtrati = useMemo(() => {
     const t = q.trim().toLowerCase();
-    if (!t) return dipendenti;
-    return dipendenti.filter((d) =>
-      `${d.cognome} ${d.nome} ${d.codice_fiscale} ${d.reparto ?? ""}`
+    return dipendenti.filter((d) => {
+      if (filtroReparto === NESSUNO && repartoLeggibile(d.reparto)) return false;
+      if (
+        filtroReparto !== TUTTI &&
+        filtroReparto !== NESSUNO &&
+        (d.reparto ?? "").trim().toLowerCase() !== filtroReparto.toLowerCase()
+      )
+        return false;
+      if (!t) return true;
+      return `${d.cognome} ${d.nome} ${d.codice_fiscale} ${d.reparto ?? ""}`
         .toLowerCase()
-        .includes(t),
-    );
-  }, [dipendenti, q]);
+        .includes(t);
+    });
+  }, [dipendenti, q, filtroReparto]);
 
   const corrente = dipendenti.find((d) => d.id === sel) ?? null;
   const suoi = attestati.filter((a) => a.dipendente_id === sel);
@@ -99,6 +142,17 @@ function DipendentiPage() {
     }
   }
 
+  async function cambiaReparto(id: string, valore: string) {
+    try {
+      await aggiornaRepartoDipendente(id, valore === NESSUNO ? null : valore);
+      toast.success("Reparto aggiornato");
+      qc.invalidateQueries({ queryKey: ["dipendenti"] });
+      qc.invalidateQueries({ queryKey: ["attestati"] });
+    } catch (e) {
+      toast.error("Modifica non riuscita", { description: (e as Error).message });
+    }
+  }
+
   return (
     <main className="min-h-screen bg-background">
       <header className="border-b border-border bg-surface">
@@ -117,7 +171,10 @@ function DipendentiPage() {
               </p>
             </div>
           </div>
-          <BackupBar />
+          <div className="flex flex-wrap items-center gap-2">
+            <ImpostazioniDialog />
+            <BackupBar />
+          </div>
         </div>
       </header>
 
@@ -133,6 +190,20 @@ function DipendentiPage() {
                 className="pl-9"
               />
             </div>
+            <Select value={filtroReparto} onValueChange={setFiltroReparto}>
+              <SelectTrigger className="w-[170px]">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value={TUTTI}>Tutti i reparti</SelectItem>
+                {repartiFiltro.map((r) => (
+                  <SelectItem key={r} value={r}>
+                    {r}
+                  </SelectItem>
+                ))}
+                <SelectItem value={NESSUNO}>Senza reparto</SelectItem>
+              </SelectContent>
+            </Select>
             <Button onClick={() => setForm({ ...VUOTO })}>
               <Plus className="size-4" /> Nuovo
             </Button>
@@ -217,11 +288,32 @@ function DipendentiPage() {
                   value={form.email ?? ""}
                   onChange={(v) => setForm({ ...form, email: v })}
                 />
-                <Campo
-                  label="Reparto"
-                  value={form.reparto ?? ""}
-                  onChange={(v) => setForm({ ...form, reparto: v })}
-                />
+                {repartiAttivi.length > 0 ? (
+                  <div className="space-y-1.5">
+                    <Label>Reparto</Label>
+                    <Select
+                      value={form.reparto ?? ""}
+                      onValueChange={(v) => setForm({ ...form, reparto: v })}
+                    >
+                      <SelectTrigger>
+                        <SelectValue placeholder="Scegli il reparto" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {repartiAttivi.map((r) => (
+                          <SelectItem key={r} value={r}>
+                            {r}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+                ) : (
+                  <Campo
+                    label="Reparto"
+                    value={form.reparto ?? ""}
+                    onChange={(v) => setForm({ ...form, reparto: v })}
+                  />
+                )}
                 <Campo
                   label="Luogo di nascita"
                   value={form.luogo_nascita ?? ""}
@@ -254,9 +346,33 @@ function DipendentiPage() {
                   {corrente.reparto ? ` · ${corrente.reparto}` : ""}
                 </p>
                 <p className="text-sm text-muted-foreground">
-                  Nato/a a {corrente.luogo_nascita || "—"} il{" "}
-                  {formatData(corrente.data_nascita)} · {corrente.email || "email non presente"}
+                  Nato/a a {corrente.luogo_nascita || "—"} il {formatData(corrente.data_nascita)} ·{" "}
+                  {corrente.email || "email non presente"}
                 </p>
+              </div>
+
+              <div className="flex flex-wrap items-center gap-3 rounded-xl bg-muted/40 px-3 py-2.5">
+                <Label className="text-sm">Reparto</Label>
+                <Select
+                  value={repartoLeggibile(corrente.reparto) ? corrente.reparto.trim() : NESSUNO}
+                  onValueChange={(v) => cambiaReparto(corrente.id, v)}
+                >
+                  <SelectTrigger className="w-[220px] bg-surface">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value={NESSUNO}>Nessun reparto</SelectItem>
+                    {(repartoLeggibile(corrente.reparto) &&
+                    !repartiAttivi.includes(corrente.reparto.trim())
+                      ? [corrente.reparto.trim(), ...repartiAttivi]
+                      : repartiAttivi
+                    ).map((r) => (
+                      <SelectItem key={r} value={r}>
+                        {r}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
               </div>
 
               <div className="space-y-3">
@@ -266,7 +382,9 @@ function DipendentiPage() {
                     <div
                       key={r.incarico.key}
                       className={`rounded-xl border p-3 ${
-                        r.ricoperto ? "border-border bg-background" : "border-dashed border-border/70"
+                        r.ricoperto
+                          ? "border-border bg-background"
+                          : "border-dashed border-border/70"
                       }`}
                     >
                       <div className="flex items-center justify-between gap-2">
@@ -312,7 +430,6 @@ function DipendentiPage() {
 
               <h3 className="text-sm font-semibold">Tutti gli attestati</h3>
 
-
               <div className="overflow-auto rounded-lg border border-border">
                 <table className="w-full text-sm">
                   <thead className="bg-muted/50 text-left text-xs text-muted-foreground">
@@ -330,9 +447,7 @@ function DipendentiPage() {
                         <td className="px-3 py-2">{formatData(a.data_corso)}</td>
                         <td
                           className={`px-3 py-2 ${
-                            scaduto(a.data_scadenza_calcolata)
-                              ? "font-medium text-destructive"
-                              : ""
+                            scaduto(a.data_scadenza_calcolata) ? "font-medium text-destructive" : ""
                           }`}
                         >
                           {a.data_scadenza_calcolata
@@ -352,10 +467,7 @@ function DipendentiPage() {
                     ))}
                     {!suoi.length && (
                       <tr>
-                        <td
-                          colSpan={4}
-                          className="px-3 py-8 text-center text-muted-foreground"
-                        >
+                        <td colSpan={4} className="px-3 py-8 text-center text-muted-foreground">
                           Nessun attestato registrato
                         </td>
                       </tr>
@@ -366,8 +478,7 @@ function DipendentiPage() {
             </div>
           ) : (
             <p className="py-16 text-center text-sm text-muted-foreground">
-              Seleziona un dipendente per vedere i suoi attestati, oppure aggiungine uno
-              nuovo.
+              Seleziona un dipendente per vedere i suoi attestati, oppure aggiungine uno nuovo.
             </p>
           )}
         </div>
