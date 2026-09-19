@@ -1,4 +1,11 @@
+import type { SupabaseClient } from "@supabase/supabase-js";
 import { supabase } from "@/integrations/supabase/client";
+
+/**
+ * Client senza tipi generati: serve per le tabelle nuove (reparti, categorie_corso)
+ * finché il file types.ts non viene rigenerato da Lovable dopo la migrazione.
+ */
+const sb = supabase as unknown as SupabaseClient;
 
 export type Dipendente = {
   id: string;
@@ -50,6 +57,119 @@ export async function getTipiCorso(): Promise<TipoCorso[]> {
   return (data ?? []) as TipoCorso[];
 }
 
+/* ---------------- Reparti (Docente, ATA, Studente, …) ---------------- */
+
+export type Reparto = {
+  id: string;
+  nome: string;
+  ordine: number;
+  attivo: boolean;
+};
+
+/** Elenco completo dei reparti (attivi e non). Lancia errore se la tabella non esiste. */
+export async function getReparti(): Promise<Reparto[]> {
+  const { data, error } = await sb.from("reparti").select("*").order("ordine").order("nome");
+  if (error) throw error;
+  return (data ?? []) as Reparto[];
+}
+
+export async function aggiungiReparto(nome: string, ordine: number) {
+  const pulito = nome.trim();
+  if (!pulito) throw new Error("Scrivi il nome del reparto");
+  const { error } = await sb.from("reparti").insert({ nome: pulito, ordine });
+  if (error) {
+    if (error.code === "23505") throw new Error(`"${pulito}" è già presente`);
+    throw error;
+  }
+}
+
+export async function impostaRepartoAttivo(id: string, attivo: boolean) {
+  const { error } = await sb.from("reparti").update({ attivo }).eq("id", id);
+  if (error) throw error;
+}
+
+export async function eliminaReparto(id: string) {
+  const { error } = await sb.from("reparti").delete().eq("id", id);
+  if (error) throw error;
+}
+
+/** Vero se il testo del reparto è leggibile (esclude vuoti e date importate male da Excel). */
+export function repartoLeggibile(v: string | null | undefined): v is string {
+  const t = (v ?? "").trim();
+  return t.length > 0 && t.length <= 40 && !/^\d/.test(t);
+}
+
+/** Cambia il reparto di un dipendente già in archivio. */
+export async function aggiornaRepartoDipendente(id: string, reparto: string | null) {
+  const { error } = await supabase
+    .from("dipendenti")
+    .update({ reparto: reparto || null })
+    .eq("id", id);
+  if (error) throw error;
+}
+
+/* ------- Categorie di corso mostrate al lavoratore nel modulo ------- */
+
+export type CategoriaCorso = {
+  macro_categoria: string;
+  visibile_lavoratore: boolean;
+  corsi: number;
+};
+
+/**
+ * Elenco unico delle categorie: ricavato da tipi_corso (quindi è lo stesso
+ * elenco dei corsi per tutti) + la scelta di visibilità salvata in categorie_corso.
+ * Una categoria senza riga in categorie_corso è considerata visibile.
+ */
+export async function getCategorieCorso(): Promise<CategoriaCorso[]> {
+  const [corsi, vis] = await Promise.all([
+    supabase.from("tipi_corso").select("macro_categoria"),
+    sb.from("categorie_corso").select("macro_categoria, visibile_lavoratore"),
+  ]);
+  if (corsi.error) throw corsi.error;
+  if (vis.error) throw vis.error;
+  const stato = new Map<string, boolean>(
+    (vis.data ?? []).map((r: { macro_categoria: string; visibile_lavoratore: boolean }) => [
+      r.macro_categoria,
+      r.visibile_lavoratore,
+    ]),
+  );
+  const conteggio = new Map<string, number>();
+  for (const c of corsi.data ?? []) {
+    conteggio.set(c.macro_categoria, (conteggio.get(c.macro_categoria) ?? 0) + 1);
+  }
+  return Array.from(conteggio.keys())
+    .sort((a, b) => a.localeCompare(b, "it"))
+    .map((nome) => ({
+      macro_categoria: nome,
+      visibile_lavoratore: stato.get(nome) ?? true,
+      corsi: conteggio.get(nome) ?? 0,
+    }));
+}
+
+export async function impostaCategoriaVisibile(macro: string, visibile: boolean) {
+  const { error } = await sb
+    .from("categorie_corso")
+    .upsert(
+      { macro_categoria: macro, visibile_lavoratore: visibile },
+      { onConflict: "macro_categoria" },
+    );
+  if (error) throw error;
+}
+
+/**
+ * Nomi delle categorie NASCOSTE al lavoratore.
+ * Se la tabella non esiste ancora (migrazione non eseguita) non nasconde nulla.
+ */
+export async function getCategorieNascoste(): Promise<string[]> {
+  const { data, error } = await sb
+    .from("categorie_corso")
+    .select("macro_categoria")
+    .eq("visibile_lavoratore", false);
+  if (error) return [];
+  return (data ?? []).map((r: { macro_categoria: string }) => r.macro_categoria);
+}
+
 export async function getAttestati(stato?: Stato | "Tutti"): Promise<Attestato[]> {
   let q = supabase
     .from("attestati_caricati")
@@ -72,9 +192,7 @@ export async function getDipendenti(): Promise<Dipendente[]> {
   return (data ?? []) as Dipendente[];
 }
 
-export async function upsertDipendente(
-  d: Omit<Dipendente, "id">,
-): Promise<Dipendente> {
+export async function upsertDipendente(d: Omit<Dipendente, "id">): Promise<Dipendente> {
   const payload = {
     ...d,
     codice_fiscale: d.codice_fiscale.trim().toUpperCase(),
@@ -99,9 +217,7 @@ export async function uploadFoto(file: File, cf: string, lato: string) {
 
 export async function fotoUrl(path: string | null): Promise<string | null> {
   if (!path) return null;
-  const { data } = await supabase.storage
-    .from("attestati")
-    .createSignedUrl(path, 60 * 60);
+  const { data } = await supabase.storage.from("attestati").createSignedUrl(path, 60 * 60);
   return data?.signedUrl ?? null;
 }
 
@@ -136,36 +252,75 @@ export async function aggiornaAttestato(id: string, patch: AttestatoPatch) {
   return data as unknown as Attestato;
 }
 
-/** Simulazione invio email di esito (stampa su console). */
-export function simulaEmail(a: Attestato, esito: Stato) {
-  console.log(
-    [
-      "───────── EMAIL SIMULATA ─────────",
-      `A: ${a.dipendenti?.email ?? "(email non presente)"}`,
-      `Codice fiscale: ${a.codice_fiscale}`,
-      `Corso: ${a.tipi_corso?.nome_corso ?? a.tipo_corso_id}`,
-      `Esito: ${esito}`,
-      esito === "Respinto" ? `Motivazione: ${a.note_rifiuto ?? ""}` : "",
-      "──────────────────────────────────",
-    ]
-      .filter(Boolean)
-      .join("\n"),
-  );
+/**
+ * Prepara il link mailto: con il messaggio di esito già scritto.
+ * Non serve nessun servizio esterno: si apre l'app di posta di chi usa la dashboard.
+ */
+export function costruisciMailto(a: Attestato, esito: Stato): string | null {
+  const email = a.dipendenti?.email?.trim();
+  if (!email) return null;
+  const corso = a.tipi_corso?.nome_corso ?? "corso di formazione";
+  const nome = a.dipendenti?.nome ?? "";
+  const dataCorso = formatData(a.data_corso);
+
+  let oggetto: string;
+  let righe: string[];
+  if (esito === "Approvato") {
+    oggetto = `Attestato approvato: ${corso}`;
+    righe = [
+      `Gentile ${nome},`,
+      "",
+      `il tuo attestato "${corso}" (corso del ${dataCorso}) è stato verificato e approvato.`,
+      a.data_scadenza_calcolata
+        ? `Scadenza: ${formatData(a.data_scadenza_calcolata)}.`
+        : "Questo attestato non ha scadenza.",
+      "",
+      "Grazie per la collaborazione.",
+    ];
+  } else {
+    oggetto = `Attestato respinto: ${corso}`;
+    righe = [
+      `Gentile ${nome},`,
+      "",
+      `il tuo attestato "${corso}" (corso del ${dataCorso}) non è stato accettato.`,
+      "",
+      `Motivo: ${a.note_rifiuto?.trim() || "non specificato"}`,
+      "",
+      "Puoi caricarlo di nuovo dal modulo, correggendo quanto indicato.",
+      "",
+      "Grazie per la collaborazione.",
+    ];
+  }
+  return `mailto:${encodeURIComponent(email)}?subject=${encodeURIComponent(
+    oggetto,
+  )}&body=${encodeURIComponent(righe.join("\r\n"))}`;
+}
+
+/** Apre l'app di posta con l'email di esito. Restituisce false se manca l'indirizzo. */
+export function apriEmailEsito(a: Attestato, esito: Stato): boolean {
+  const link = costruisciMailto(a, esito);
+  if (!link) return false;
+  window.location.href = link;
+  return true;
 }
 
 /** Esporta l'intero database in un file JSON salvato sul dispositivo. */
 export async function esportaDb() {
-  const [dip, tipi, att] = await Promise.all([
+  const [dip, tipi, att, rep, cat] = await Promise.all([
     supabase.from("dipendenti").select("*").limit(5000),
     supabase.from("tipi_corso").select("*"),
     supabase.from("attestati_caricati").select("*").limit(20000),
+    sb.from("reparti").select("*"),
+    sb.from("categorie_corso").select("*"),
   ]);
   const dump = {
     esportato_il: new Date().toISOString(),
-    versione: 1,
+    versione: 2,
     dipendenti: dip.data ?? [],
     tipi_corso: tipi.data ?? [],
     attestati_caricati: att.data ?? [],
+    reparti: rep.data ?? [],
+    categorie_corso: cat.data ?? [],
   };
   const blob = new Blob([JSON.stringify(dump, null, 2)], {
     type: "application/json",
@@ -184,9 +339,7 @@ export async function esportaDb() {
     try {
       const handle = await w.showSaveFilePicker({
         suggestedName: nome,
-        types: [
-          { description: "Backup JSON", accept: { "application/json": [".json"] } },
-        ],
+        types: [{ description: "Backup JSON", accept: { "application/json": [".json"] } }],
       });
       const writable = await handle.createWritable();
       await writable.write(blob);
@@ -224,6 +377,15 @@ export async function importaDb(file: File) {
       dipCount += chunk.length;
     }
   }
+  // Reparti e categorie (ignorati se le tabelle non esistono ancora)
+  if (Array.isArray(dump.reparti) && dump.reparti.length) {
+    await sb.from("reparti").upsert(dump.reparti, { onConflict: "nome" });
+  }
+  if (Array.isArray(dump.categorie_corso) && dump.categorie_corso.length) {
+    await sb
+      .from("categorie_corso")
+      .upsert(dump.categorie_corso, { onConflict: "macro_categoria" });
+  }
   if (Array.isArray(dump.attestati_caricati)) {
     for (let i = 0; i < dump.attestati_caricati.length; i += 200) {
       const chunk = dump.attestati_caricati.slice(i, i + 200);
@@ -239,8 +401,7 @@ export async function importaDb(file: File) {
 
 export function statoBadgeClass(stato: string) {
   if (stato === "Approvato") return "bg-success/12 text-success border-success/30";
-  if (stato === "Respinto")
-    return "bg-destructive/12 text-destructive border-destructive/30";
+  if (stato === "Respinto") return "bg-destructive/12 text-destructive border-destructive/30";
   return "bg-warning/15 text-warning-foreground border-warning/35";
 }
 
@@ -400,12 +561,7 @@ export function normalizzaNome(s: string) {
     .replace(/^_+|_+$/g, "");
 }
 
-export function nomeFilePdf(
-  cognome: string,
-  nome: string,
-  tipo: string,
-  dataScadenza: string,
-) {
+export function nomeFilePdf(cognome: string, nome: string, tipo: string, dataScadenza: string) {
   const data = dataScadenza.slice(0, 10).replace(/-/g, "");
   return `${normalizzaNome(cognome)}_${normalizzaNome(nome)}_${normalizzaNome(tipo)}_${data}.pdf`;
 }
@@ -432,9 +588,7 @@ export async function caricaDocumento(input: {
   file: File;
 }) {
   const etichetta =
-    input.tipo === "Altro" && input.tipoPersonalizzato
-      ? input.tipoPersonalizzato
-      : input.tipo;
+    input.tipo === "Altro" && input.tipoPersonalizzato ? input.tipoPersonalizzato : input.tipo;
   const nome = nomeFilePdf(
     input.dipendente.cognome,
     input.dipendente.nome,
@@ -467,10 +621,7 @@ export async function caricaDocumento(input: {
 
 export async function eliminaDocumento(doc: DocumentoAttestato) {
   await supabase.storage.from("attestati").remove([doc.percorso_file]);
-  const { error } = await supabase
-    .from("documenti_attestati")
-    .delete()
-    .eq("id", doc.id);
+  const { error } = await supabase.from("documenti_attestati").delete().eq("id", doc.id);
   if (error) throw error;
 }
 
@@ -524,11 +675,7 @@ export async function scegliCartellaLocale(): Promise<DirHandle | null> {
 }
 
 /** Scrive il PDF nella cartella locale; chiede conferma se il file esiste già. */
-export async function salvaInLocale(
-  file: File,
-  nomeFile: string,
-  sottocartella: string,
-) {
+export async function salvaInLocale(file: File, nomeFile: string, sottocartella: string) {
   const root = await scegliCartellaLocale();
   if (!root) throw new Error("Cartella non disponibile");
   const dir = await root.getDirectoryHandle(sottocartella, { create: true });
