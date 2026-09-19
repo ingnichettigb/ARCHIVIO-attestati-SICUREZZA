@@ -17,6 +17,8 @@ import {
 import { UploadPreview } from "@/components/UploadPreview";
 import {
   creaAttestato,
+  getCategorieNascoste,
+  getReparti,
   getTipiCorso,
   upsertDipendente,
   uploadFoto,
@@ -50,6 +52,18 @@ function CaricaPage() {
     queryKey: ["tipi_corso"],
     queryFn: getTipiCorso,
   });
+  // Se le tabelle nuove non esistono ancora, il modulo funziona come prima.
+  const { data: repartiElenco = [] } = useQuery({
+    queryKey: ["reparti"],
+    queryFn: getReparti,
+    retry: false,
+  });
+  const { data: nascoste = [] } = useQuery({
+    queryKey: ["categorie_nascoste"],
+    queryFn: getCategorieNascoste,
+    retry: false,
+  });
+  const reparti = useMemo(() => repartiElenco.filter((r) => r.attivo), [repartiElenco]);
 
   const [anagrafica, setAnagrafica] = useState({
     codice_fiscale: "",
@@ -71,8 +85,13 @@ function CaricaPage() {
   const [done, setDone] = useState(false);
 
   const macros = useMemo(
-    () => Array.from(new Set(corsi.map((c) => c.macro_categoria))).sort(),
-    [corsi],
+    () =>
+      Array.from(
+        new Set(
+          corsi.filter((c) => !nascoste.includes(c.macro_categoria)).map((c) => c.macro_categoria),
+        ),
+      ).sort(),
+    [corsi, nascoste],
   );
   const livelli = useMemo(
     () =>
@@ -85,8 +104,7 @@ function CaricaPage() {
     () =>
       corsi.filter(
         (c: TipoCorso) =>
-          c.macro_categoria === macro &&
-          (!livello || c.livello_specifico === livello),
+          c.macro_categoria === macro && (!livello || c.livello_specifico === livello),
       ),
     [corsi, macro, livello],
   );
@@ -103,6 +121,10 @@ function CaricaPage() {
       toast.error("Codice fiscale non valido", {
         description: "Deve contenere 16 caratteri.",
       });
+      return;
+    }
+    if (reparti.length > 0 && !anagrafica.reparto) {
+      toast.error("Scegli il tuo reparto");
       return;
     }
     if (!corsoId || !dataCorso) {
@@ -149,8 +171,8 @@ function CaricaPage() {
         <CheckCircle2 className="size-14 text-success" />
         <h1 className="font-display text-2xl font-semibold">Attestato inviato</h1>
         <p className="text-sm text-muted-foreground">
-          Il tuo attestato è in attesa di validazione da parte dell'ufficio
-          personale. Riceverai l'esito via email.
+          Il tuo attestato è in attesa di validazione da parte dell'ufficio personale. Riceverai
+          l'esito via email.
         </p>
         <Button
           onClick={() => {
@@ -179,9 +201,7 @@ function CaricaPage() {
             <ShieldCheck className="size-5" />
           </span>
           <div>
-            <h1 className="font-display text-base font-semibold">
-              Carica il tuo attestato
-            </h1>
+            <h1 className="font-display text-base font-semibold">Carica il tuo attestato</h1>
             <p className="text-xs text-muted-foreground">Formazione sicurezza</p>
           </div>
         </div>
@@ -224,13 +244,30 @@ function CaricaPage() {
               className="h-12"
             />
           </Field>
-          <Field label="Reparto">
-            <Input
-              value={anagrafica.reparto}
-              onChange={(e) => set("reparto", e.target.value)}
-              className="h-12"
-            />
-          </Field>
+          {reparti.length > 0 ? (
+            <Field label="Reparto *">
+              <Select value={anagrafica.reparto} onValueChange={(v) => set("reparto", v)}>
+                <SelectTrigger className="h-12">
+                  <SelectValue placeholder="Scegli il reparto" />
+                </SelectTrigger>
+                <SelectContent>
+                  {reparti.map((r) => (
+                    <SelectItem key={r.id} value={r.nome}>
+                      {r.nome}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </Field>
+          ) : (
+            <Field label="Reparto">
+              <Input
+                value={anagrafica.reparto}
+                onChange={(e) => set("reparto", e.target.value)}
+                className="h-12"
+              />
+            </Field>
+          )}
           <Field label="Luogo di nascita">
             <Input
               value={anagrafica.luogo_nascita}
@@ -351,8 +388,7 @@ function CaricaPage() {
               Scadenza calcolata:{" "}
               {new Date(
                 new Date(dataCorso).setFullYear(
-                  new Date(dataCorso).getFullYear() +
-                    corsoSelezionato.durata_validita_anni,
+                  new Date(dataCorso).getFullYear() + corsoSelezionato.durata_validita_anni,
                 ),
               ).toLocaleDateString("it-IT")}
             </p>
