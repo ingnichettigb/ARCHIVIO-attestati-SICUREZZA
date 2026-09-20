@@ -15,6 +15,7 @@ import { Input } from "@/components/ui/input";
 import { Switch } from "@/components/ui/switch";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { TabellaRepartiDialog } from "@/components/TabellaRepartiDialog";
+import { TabellaTipiCorsoDialog } from "@/components/TabellaTipiCorsoDialog";
 import {
   Dialog,
   DialogContent,
@@ -718,11 +719,14 @@ function CategorieTab() {
 
   return (
     <div className="space-y-4">
-      <p className="text-sm text-muted-foreground">
-        Elenco di tutte le categorie di corso, uguale per tutti. Attiva quelle che il lavoratore può
-        scegliere nel modulo: le altre restano comunque visibili in dashboard HR e nelle schede dei
-        dipendenti.
-      </p>
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <p className="flex-1 text-sm text-muted-foreground">
+          Elenco di tutte le categorie di corso, uguale per tutti. Attiva quelle che il lavoratore
+          può scegliere nel modulo: le altre restano comunque visibili in dashboard HR e nelle
+          schede dei dipendenti.
+        </p>
+        <TabellaTipiCorsoDialog />
+      </div>
 
       {isLoading ? (
         <div className="flex items-center gap-2 py-6 text-sm text-muted-foreground">
