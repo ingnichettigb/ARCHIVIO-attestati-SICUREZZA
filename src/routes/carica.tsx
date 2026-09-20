@@ -15,11 +15,17 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { UploadPreview } from "@/components/UploadPreview";
+import { CampoSuggerito } from "@/components/CampoSuggerito";
 import {
   creaAttestato,
+  etichettaSottoreparto,
   getCategorieNascoste,
+  getClassiConcorso,
+  getMaterie,
   getReparti,
+  getSottoreparti,
   getTipiCorso,
+  registraClasseEMateria,
   upsertDipendente,
   uploadFoto,
   type TipoCorso,
@@ -58,6 +64,21 @@ function CaricaPage() {
     queryFn: getReparti,
     retry: false,
   });
+  const { data: sottorepartiElenco = [] } = useQuery({
+    queryKey: ["sottoreparti"],
+    queryFn: getSottoreparti,
+    retry: false,
+  });
+  const { data: classi = [] } = useQuery({
+    queryKey: ["classi_concorso"],
+    queryFn: getClassiConcorso,
+    retry: false,
+  });
+  const { data: materie = [] } = useQuery({
+    queryKey: ["materie"],
+    queryFn: getMaterie,
+    retry: false,
+  });
   const { data: nascoste = [] } = useQuery({
     queryKey: ["categorie_nascoste"],
     queryFn: getCategorieNascoste,
@@ -71,6 +92,9 @@ function CaricaPage() {
     nome: "",
     email: "",
     reparto: "",
+    sottoreparto: "",
+    classe_concorso: "",
+    materia: "",
     luogo_nascita: "",
     data_nascita: "",
   });
@@ -84,31 +108,70 @@ function CaricaPage() {
   const [busy, setBusy] = useState(false);
   const [done, setDone] = useState(false);
 
+  // Solo i corsi che il lavoratore può scegliere: rispetta sia il nascondimento
+  // per macro-categoria sia l'interruttore per singolo corso (tabella corsi).
+  const corsiVisibili = useMemo(() => corsi.filter((c) => c.visibile_lavoratore), [corsi]);
+
   const macros = useMemo(
     () =>
       Array.from(
         new Set(
-          corsi.filter((c) => !nascoste.includes(c.macro_categoria)).map((c) => c.macro_categoria),
+          corsiVisibili
+            .filter((c) => !nascoste.includes(c.macro_categoria))
+            .map((c) => c.macro_categoria),
         ),
       ).sort(),
-    [corsi, nascoste],
+    [corsiVisibili, nascoste],
   );
   const livelli = useMemo(
     () =>
       LIVELLI.filter((l) =>
-        corsi.some((c) => c.macro_categoria === macro && c.livello_specifico === l),
+        corsiVisibili.some((c) => c.macro_categoria === macro && c.livello_specifico === l),
       ),
-    [corsi, macro],
+    [corsiVisibili, macro],
   );
   const corsiFiltrati = useMemo(
     () =>
-      corsi.filter(
+      corsiVisibili.filter(
         (c: TipoCorso) =>
           c.macro_categoria === macro && (!livello || c.livello_specifico === livello),
       ),
-    [corsi, macro, livello],
+    [corsiVisibili, macro, livello],
   );
   const corsoSelezionato = corsi.find((c) => c.id === corsoId);
+
+  // Reparto scelto -> sottoreparti disponibili e obbligo di classe di concorso.
+  const repartoScelto = useMemo(
+    () => reparti.find((r) => r.nome === anagrafica.reparto) ?? null,
+    [reparti, anagrafica.reparto],
+  );
+  const sottoreparti = useMemo(
+    () =>
+      repartoScelto
+        ? sottorepartiElenco.filter((s) => s.reparto_id === repartoScelto.id && s.attivo)
+        : [],
+    [sottorepartiElenco, repartoScelto],
+  );
+  const chiedeInsegnamento = !!repartoScelto?.richiede_classe_concorso;
+
+  // Suggerimenti: prima le classi più usate, poi tutte quelle in elenco.
+  const suggerimentiClassi = useMemo(
+    () =>
+      classi
+        .filter((c) => c.attivo)
+        .sort((a, b) => b.usi - a.usi || a.codice.localeCompare(b.codice, "it"))
+        .map((c) => ({ valore: c.codice, dettaglio: c.denominazione })),
+    [classi],
+  );
+  const suggerimentiMaterie = useMemo(() => {
+    const classe = anagrafica.classe_concorso.trim().toUpperCase();
+    const collegate = materie.filter((m) => classe && m.classe_concorso === classe);
+    const altre = materie.filter((m) => !classe || m.classe_concorso !== classe);
+    return [...collegate, ...altre].map((m) => ({
+      valore: m.nome,
+      dettaglio: m.classe_concorso,
+    }));
+  }, [materie, anagrafica.classe_concorso]);
 
   function set<K extends keyof typeof anagrafica>(k: K, v: string) {
     setAnagrafica((a) => ({ ...a, [k]: v }));
@@ -127,6 +190,18 @@ function CaricaPage() {
       toast.error("Scegli il tuo reparto");
       return;
     }
+    if (sottoreparti.length > 0 && !anagrafica.sottoreparto) {
+      toast.error("Scegli il tuo profilo dentro il reparto");
+      return;
+    }
+    if (chiedeInsegnamento && !anagrafica.classe_concorso.trim()) {
+      toast.error("Indica la classe di concorso");
+      return;
+    }
+    if (chiedeInsegnamento && !anagrafica.materia.trim()) {
+      toast.error("Indica la materia insegnata");
+      return;
+    }
     if (!corsoId || !dataCorso) {
       toast.error("Completa corso e data del corso");
       return;
@@ -143,9 +218,18 @@ function CaricaPage() {
         nome: anagrafica.nome.trim(),
         email: anagrafica.email.trim() || null,
         reparto: anagrafica.reparto.trim() || null,
+        sottoreparto: anagrafica.sottoreparto.trim() || null,
+        classe_concorso: chiedeInsegnamento
+          ? anagrafica.classe_concorso.trim().toUpperCase() || null
+          : null,
+        materia: chiedeInsegnamento ? anagrafica.materia.trim() || null : null,
         luogo_nascita: anagrafica.luogo_nascita.trim() || null,
         data_nascita: anagrafica.data_nascita || null,
       });
+      // Alimenta il database dei suggerimenti per chi compila dopo.
+      if (chiedeInsegnamento) {
+        await registraClasseEMateria(anagrafica.classe_concorso, anagrafica.materia);
+      }
       const pFronte = await uploadFoto(fronte, cf, "fronte");
       const pRetro = retro ? await uploadFoto(retro, cf, "retro") : null;
       await creaAttestato({
@@ -246,7 +330,18 @@ function CaricaPage() {
           </Field>
           {reparti.length > 0 ? (
             <Field label="Reparto *">
-              <Select value={anagrafica.reparto} onValueChange={(v) => set("reparto", v)}>
+              <Select
+                value={anagrafica.reparto}
+                onValueChange={(v) =>
+                  setAnagrafica((a) => ({
+                    ...a,
+                    reparto: v,
+                    sottoreparto: "",
+                    classe_concorso: "",
+                    materia: "",
+                  }))
+                }
+              >
                 <SelectTrigger className="h-12">
                   <SelectValue placeholder="Scegli il reparto" />
                 </SelectTrigger>
@@ -267,6 +362,50 @@ function CaricaPage() {
                 className="h-12"
               />
             </Field>
+          )}
+
+          {sottoreparti.length > 0 && (
+            <Field label="Profilo / sottoreparto *">
+              <Select value={anagrafica.sottoreparto} onValueChange={(v) => set("sottoreparto", v)}>
+                <SelectTrigger className="h-12">
+                  <SelectValue placeholder="Scegli il profilo" />
+                </SelectTrigger>
+                <SelectContent>
+                  {sottoreparti.map((s) => (
+                    <SelectItem key={s.id} value={s.nome}>
+                      {etichettaSottoreparto(s)}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </Field>
+          )}
+
+          {chiedeInsegnamento && (
+            <>
+              <Field label="Classe di concorso *">
+                <CampoSuggerito
+                  value={anagrafica.classe_concorso}
+                  onChange={(v) => set("classe_concorso", v)}
+                  suggerimenti={suggerimentiClassi}
+                  placeholder="es. A-26"
+                  maiuscolo
+                  className="h-12"
+                />
+                <p className="text-xs text-muted-foreground">
+                  Scegli dall'elenco oppure scrivila: se manca, viene aggiunta all'archivio.
+                </p>
+              </Field>
+              <Field label="Materia insegnata *">
+                <CampoSuggerito
+                  value={anagrafica.materia}
+                  onChange={(v) => set("materia", v)}
+                  suggerimenti={suggerimentiMaterie}
+                  placeholder="es. Matematica"
+                  className="h-12"
+                />
+              </Field>
+            </>
           )}
           <Field label="Luogo di nascita">
             <Input
