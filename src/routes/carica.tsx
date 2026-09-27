@@ -386,7 +386,7 @@ function CaricaPage() {
               <Field label="Classe di concorso *">
                 <CampoSuggerito
                   value={anagrafica.classe_concorso}
-                  onChange={(v) => set("classe_concorso", v)}
+                  onChange={(v: string) => set("classe_concorso", v)}
                   suggerimenti={suggerimentiClassi}
                   placeholder="es. A-26"
                   maiuscolo
@@ -399,7 +399,7 @@ function CaricaPage() {
               <Field label="Materia insegnata *">
                 <CampoSuggerito
                   value={anagrafica.materia}
-                  onChange={(v) => set("materia", v)}
+                  onChange={(v: string) => set("materia", v)}
                   suggerimenti={suggerimentiMaterie}
                   placeholder="es. Matematica"
                   className="h-12"
