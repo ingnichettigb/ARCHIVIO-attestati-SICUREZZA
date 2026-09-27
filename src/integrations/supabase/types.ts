@@ -87,8 +87,57 @@ export type Database = {
           },
         ]
       }
+      categorie_corso: {
+        Row: {
+          macro_categoria: string
+          updated_at: string
+          visibile_lavoratore: boolean
+        }
+        Insert: {
+          macro_categoria: string
+          updated_at?: string
+          visibile_lavoratore?: boolean
+        }
+        Update: {
+          macro_categoria?: string
+          updated_at?: string
+          visibile_lavoratore?: boolean
+        }
+        Relationships: []
+      }
+      classi_concorso: {
+        Row: {
+          attivo: boolean
+          codice: string
+          created_at: string
+          da_lavoratore: boolean
+          denominazione: string | null
+          id: string
+          usi: number
+        }
+        Insert: {
+          attivo?: boolean
+          codice: string
+          created_at?: string
+          da_lavoratore?: boolean
+          denominazione?: string | null
+          id?: string
+          usi?: number
+        }
+        Update: {
+          attivo?: boolean
+          codice?: string
+          created_at?: string
+          da_lavoratore?: boolean
+          denominazione?: string | null
+          id?: string
+          usi?: number
+        }
+        Relationships: []
+      }
       dipendenti: {
         Row: {
+          classe_concorso: string | null
           codice_fiscale: string
           cognome: string
           created_at: string
@@ -96,11 +145,14 @@ export type Database = {
           email: string | null
           id: string
           luogo_nascita: string | null
+          materia: string | null
           nome: string
           reparto: string | null
+          sottoreparto: string | null
           updated_at: string
         }
         Insert: {
+          classe_concorso?: string | null
           codice_fiscale: string
           cognome: string
           created_at?: string
@@ -108,11 +160,14 @@ export type Database = {
           email?: string | null
           id?: string
           luogo_nascita?: string | null
+          materia?: string | null
           nome: string
           reparto?: string | null
+          sottoreparto?: string | null
           updated_at?: string
         }
         Update: {
+          classe_concorso?: string | null
           codice_fiscale?: string
           cognome?: string
           created_at?: string
@@ -120,8 +175,10 @@ export type Database = {
           email?: string | null
           id?: string
           luogo_nascita?: string | null
+          materia?: string | null
           nome?: string
           reparto?: string | null
+          sottoreparto?: string | null
           updated_at?: string
         }
         Relationships: []
@@ -173,6 +230,101 @@ export type Database = {
           },
         ]
       }
+      materie: {
+        Row: {
+          attivo: boolean
+          classe_concorso: string | null
+          created_at: string
+          da_lavoratore: boolean
+          id: string
+          nome: string
+          usi: number
+        }
+        Insert: {
+          attivo?: boolean
+          classe_concorso?: string | null
+          created_at?: string
+          da_lavoratore?: boolean
+          id?: string
+          nome: string
+          usi?: number
+        }
+        Update: {
+          attivo?: boolean
+          classe_concorso?: string | null
+          created_at?: string
+          da_lavoratore?: boolean
+          id?: string
+          nome?: string
+          usi?: number
+        }
+        Relationships: []
+      }
+      reparti: {
+        Row: {
+          attivo: boolean
+          created_at: string
+          id: string
+          nome: string
+          ordine: number
+          richiede_classe_concorso: boolean
+        }
+        Insert: {
+          attivo?: boolean
+          created_at?: string
+          id?: string
+          nome: string
+          ordine?: number
+          richiede_classe_concorso?: boolean
+        }
+        Update: {
+          attivo?: boolean
+          created_at?: string
+          id?: string
+          nome?: string
+          ordine?: number
+          richiede_classe_concorso?: boolean
+        }
+        Relationships: []
+      }
+      sottoreparti: {
+        Row: {
+          attivo: boolean
+          codice: string | null
+          created_at: string
+          id: string
+          nome: string
+          ordine: number
+          reparto_id: string
+        }
+        Insert: {
+          attivo?: boolean
+          codice?: string | null
+          created_at?: string
+          id?: string
+          nome: string
+          ordine?: number
+          reparto_id: string
+        }
+        Update: {
+          attivo?: boolean
+          codice?: string | null
+          created_at?: string
+          id?: string
+          nome?: string
+          ordine?: number
+          reparto_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "sottoreparti_reparto_id_fkey"
+            columns: ["reparto_id"]
+            isOneToOne: false
+            referencedRelation: "reparti"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       tipi_corso: {
         Row: {
           created_at: string
@@ -211,7 +363,14 @@ export type Database = {
       [_ in never]: never
     }
     Functions: {
-      [_ in never]: never
+      registra_classe_concorso: {
+        Args: { p_codice: string; p_denominazione?: string }
+        Returns: undefined
+      }
+      registra_materia: {
+        Args: { p_classe?: string; p_nome: string }
+        Returns: undefined
+      }
     }
     Enums: {
       [_ in never]: never
