@@ -15,6 +15,7 @@ import {
 } from "@/components/ui/select";
 import { BackupBar } from "@/components/BackupBar";
 import { ImpostazioniDialog } from "@/components/ImpostazioniDialog";
+import { DocumentiAttestati } from "@/components/DocumentiAttestati";
 import {
   aggiornaRepartoDipendente,
   etichettaStato,
@@ -427,6 +428,9 @@ function DipendentiPage() {
                   ))}
                 </div>
               </div>
+
+              {/* Riquadro Gestione PDF Attestati */}
+              <DocumentiAttestati dipendente={corrente} />
 
               <h3 className="text-sm font-semibold">Tutti gli attestati</h3>
 
