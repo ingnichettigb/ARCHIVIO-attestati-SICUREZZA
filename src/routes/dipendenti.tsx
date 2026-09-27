@@ -35,13 +35,13 @@ import {
 export const Route = createFileRoute("/dipendenti")({
   head: () => ({
     meta: [
-      { title: "Dipendenti — Archivio Attestati Sicurezza" },
+      { title: "Gestione Dipendenti — Archivio Sicurezza" },
       {
         name: "description",
         content:
-          "Elenco completo dei dipendenti con ricerca, inserimento di nuovi nominativi e storico degli attestati di formazione con relative scadenze.",
+          "Elenco completo dei dipendenti, anagrafiche e storico degli attestati di formazione sulla sicurezza.",
       },
-      { property: "og:title", content: "Dipendenti e attestati" },
+      { property: "og:title", content: "Gestione Dipendenti" },
       {
         property: "og:description",
         content:
@@ -61,6 +61,9 @@ const VUOTO: Omit<Dipendente, "id"> = {
   nome: "",
   email: "",
   reparto: "",
+  sottoreparto: "",
+  classe_concorso: "",
+  materia: "",
   luogo_nascita: "",
   data_nascita: "",
 };
