@@ -13,6 +13,7 @@ import { Route as IndexRouteImport } from './routes/index'
 import { Route as CaricaRouteImport } from './routes/carica'
 import { Route as DipendentiRouteImport } from './routes/dipendenti'
 import { Route as HrRouteImport } from './routes/hr'
+import { Route as OperatoreRouteImport } from './routes/operatore'
 import { Route as ScadenzeRouteImport } from './routes/scadenze'
 
 const IndexRoute = IndexRouteImport.update({
@@ -35,6 +36,11 @@ const HrRoute = HrRouteImport.update({
   path: '/hr',
   getParentRoute: () => rootRouteImport,
 } as any)
+const OperatoreRoute = OperatoreRouteImport.update({
+  id: '/operatore',
+  path: '/operatore',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const ScadenzeRoute = ScadenzeRouteImport.update({
   id: '/scadenze',
   path: '/scadenze',
@@ -46,6 +52,7 @@ export interface FileRoutesByFullPath {
   '/carica': typeof CaricaRoute
   '/dipendenti': typeof DipendentiRoute
   '/hr': typeof HrRoute
+  '/operatore': typeof OperatoreRoute
   '/scadenze': typeof ScadenzeRoute
 }
 export interface FileRoutesByTo {
@@ -53,6 +60,7 @@ export interface FileRoutesByTo {
   '/carica': typeof CaricaRoute
   '/dipendenti': typeof DipendentiRoute
   '/hr': typeof HrRoute
+  '/operatore': typeof OperatoreRoute
   '/scadenze': typeof ScadenzeRoute
 }
 export interface FileRoutesById {
@@ -61,14 +69,23 @@ export interface FileRoutesById {
   '/carica': typeof CaricaRoute
   '/dipendenti': typeof DipendentiRoute
   '/hr': typeof HrRoute
+  '/operatore': typeof OperatoreRoute
   '/scadenze': typeof ScadenzeRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
-  fullPaths: '/' | '/carica' | '/dipendenti' | '/hr' | '/scadenze'
+  fullPaths:
+    '/' | '/carica' | '/dipendenti' | '/hr' | '/operatore' | '/scadenze'
   fileRoutesByTo: FileRoutesByTo
-  to: '/' | '/carica' | '/dipendenti' | '/hr' | '/scadenze'
-  id: '__root__' | '/' | '/carica' | '/dipendenti' | '/hr' | '/scadenze'
+  to: '/' | '/carica' | '/dipendenti' | '/hr' | '/operatore' | '/scadenze'
+  id:
+    | '__root__'
+    | '/'
+    | '/carica'
+    | '/dipendenti'
+    | '/hr'
+    | '/operatore'
+    | '/scadenze'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
@@ -76,6 +93,7 @@ export interface RootRouteChildren {
   CaricaRoute: typeof CaricaRoute
   DipendentiRoute: typeof DipendentiRoute
   HrRoute: typeof HrRoute
+  OperatoreRoute: typeof OperatoreRoute
   ScadenzeRoute: typeof ScadenzeRoute
 }
 
@@ -109,6 +127,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof HrRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/operatore': {
+      id: '/operatore'
+      path: '/operatore'
+      fullPath: '/operatore'
+      preLoaderRoute: typeof OperatoreRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/scadenze': {
       id: '/scadenze'
       path: '/scadenze'
@@ -124,6 +149,7 @@ const rootRouteChildren: RootRouteChildren = {
   CaricaRoute: CaricaRoute,
   DipendentiRoute: DipendentiRoute,
   HrRoute: HrRoute,
+  OperatoreRoute: OperatoreRoute,
   ScadenzeRoute: ScadenzeRoute,
 }
 export const routeTree = rootRouteImport
