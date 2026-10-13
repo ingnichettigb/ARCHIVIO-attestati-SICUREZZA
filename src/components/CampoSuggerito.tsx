@@ -3,7 +3,7 @@ import { Input } from "@/components/ui/input";
 
 export type Suggerimento = {
   valore: string;
-  dettaglio?: string;
+  dettaglio?: string | null;
 };
 
 interface CampoSuggeritoProps {
