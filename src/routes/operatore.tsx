@@ -121,7 +121,7 @@ function Operatore() {
   useEffect(() => () => { if (anteprima?.startsWith("blob:")) URL.revokeObjectURL(anteprima); }, [anteprima]);
 
   async function scegliFile(f: File) {
-    if (!(f.type === "application/pdf" || f.type.startsWith("image/"))) return toast.error("Carica un PDF o una foto");
+    if (!(f.type === "application/pdf" || f.type.startsWith("image/"))) return void toast.error("Carica un PDF o una foto");
     setFile(f);
     setAnteprima(URL.createObjectURL(f));
     setAnteprimaMime(f.type);
@@ -132,7 +132,7 @@ function Operatore() {
       const r = await estraiAttestato({
         data: { base64: await fileToBase64(f), mime: f.type, nomeFile: f.name, tipiCorso: tipi.map((t) => t.nome_corso), argomenti },
       });
-      if (!r.ok) return toast.error(r.errore);
+      if (!r.ok) return void toast.error(r.errore);
       const d = r.dati;
       const tipo = tipi.find((t) => t.nome_corso.toLowerCase() === d.tipo_corso.toLowerCase());
       const { data: esistente } = d.codice_fiscale
@@ -163,26 +163,26 @@ function Operatore() {
     const { error } = tabella === "argomenti_corso"
       ? await sb.from(tabella).insert({ nome: v.trim() })
       : await sb.from(tabella).insert({ etichetta: v.trim(), ore });
-    if (error) return toast.error(error.message);
+    if (error) return void toast.error(error.message);
     qc.invalidateQueries({ queryKey: [tabella === "argomenti_corso" ? "argomenti" : "integrazioni"] });
     if (tabella === "opzioni_integrazione") set("integrazione", v.trim());
   }
 
   async function salvaInCoda() {
-    if (!form.cognome || !form.codice_fiscale) return toast.error("Servono almeno cognome e codice fiscale");
-    if (form.esito === "Non valido" && !form.note.trim()) return toast.error("Indica il motivo del rifiuto");
+    if (!form.cognome || !form.codice_fiscale) return void toast.error("Servono almeno cognome e codice fiscale");
+    if (form.esito === "Non valido" && !form.note.trim()) return void toast.error("Indica il motivo del rifiuto");
     let percorso = form.percorso_file, mime = form.mime_file;
     if (file) {
       mime = file.type;
       percorso = `Coda/${crypto.randomUUID()}.${estensione(mime)}`;
       const { error } = await supabase.storage.from("attestati").upload(percorso, file, { contentType: mime });
-      if (error) return toast.error(error.message);
+      if (error) return void toast.error(error.message);
     }
     const payload = pulisci({ ...form, percorso_file: percorso, mime_file: mime, nome_file: nomeFileStandard(form, estensione(mime)) });
     const { error } = idInModifica
       ? await sb.from("coda_valutazioni").update(payload).eq("id", idInModifica)
       : await sb.from("coda_valutazioni").insert(payload);
-    if (error) return toast.error(error.message);
+    if (error) return void toast.error(error.message);
     toast.success(idInModifica ? "Valutazione aggiornata" : "Aggiunto alla coda di lavoro");
     nuovo();
     ricarica();
@@ -202,7 +202,7 @@ function Operatore() {
 
   async function duplica(r: Riga) {
     const { error } = await sb.from("coda_valutazioni").insert(pulisci({ ...r, archiviato: false, inviato: false, tipo_corso_id: null, tipo_corso_nome: "" }));
-    if (error) return toast.error(error.message);
+    if (error) return void toast.error(error.message);
     toast.success("Riga duplicata: scegli il secondo corso con la matita");
     ricarica();
   }
@@ -231,7 +231,7 @@ function Operatore() {
         if (r.percorso_file) {
           percorsoFinale = `${CARTELLA_ARCHIVIO}/${cartellaDipendente(dip)}/${nomeFileStandard(r, estensione(r.mime_file))}`;
           const { data: blob } = await supabase.storage.from("attestati").download(r.percorso_file);
-          if (blob) await supabase.storage.from("attestati").upload(percorsoFinale, blob, { upsert: true, contentType: r.mime_file ?? undefined });
+          if (blob) await supabase.storage.from("attestati").upload(percorsoFinale, blob, { upsert: true, contentType: r.mime_file ?? "application/octet-stream" });
         }
         const { error } = await supabase.from("attestati_caricati").insert({
           dipendente_id: dip.id, codice_fiscale: dip.codice_fiscale, tipo_corso_id: r.tipo_corso_id,
@@ -266,8 +266,8 @@ function Operatore() {
 
   async function salvaLocale(r: Riga) {
     const w = window as unknown as { showDirectoryPicker?: (o?: unknown) => Promise<DirH> };
-    if (!w.showDirectoryPicker) return toast.error("Salvataggio in cartella disponibile solo su Chrome o Edge da computer");
-    if (!r.percorso_file) return toast.error("Nessun file allegato");
+    if (!w.showDirectoryPicker) return void toast.error("Salvataggio in cartella disponibile solo su Chrome o Edge da computer");
+    if (!r.percorso_file) return void toast.error("Nessun file allegato");
     try {
       if (!cartellaScelta) cartellaScelta = await w.showDirectoryPicker({ id: "attestati-operatore", mode: "readwrite", startIn: "documents" });
       const sotto = (r.data_corso || "0000-00").slice(0, 7);

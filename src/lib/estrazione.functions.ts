@@ -43,7 +43,7 @@ export const estraiAttestato = createServerFn({ method: "POST" })
     (d: { base64: string; mime: string; nomeFile: string; tipiCorso: string[]; argomenti: string[] }) => d,
   )
   .handler(async ({ data }): Promise<{ ok: true; dati: DatiEstratti } | { ok: false; errore: string }> => {
-    const key = process.env.LOVABLE_API_KEY;
+    const key = process.env["LOVABLE_API_KEY"];
     if (!key) return { ok: false, errore: "Chiave AI non configurata" };
     const isPdf = data.mime === "application/pdf";
     const media = isPdf
