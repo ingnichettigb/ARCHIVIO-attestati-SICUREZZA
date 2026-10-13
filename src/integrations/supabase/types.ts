@@ -14,6 +14,24 @@ export type Database = {
   }
   public: {
     Tables: {
+      argomenti_corso: {
+        Row: {
+          created_at: string
+          id: string
+          nome: string
+        }
+        Insert: {
+          created_at?: string
+          id?: string
+          nome: string
+        }
+        Update: {
+          created_at?: string
+          id?: string
+          nome?: string
+        }
+        Relationships: []
+      }
       attestati_caricati: {
         Row: {
           codice_fiscale: string
@@ -132,6 +150,90 @@ export type Database = {
           denominazione?: string | null
           id?: string
           usi?: number
+        }
+        Relationships: []
+      }
+      coda_valutazioni: {
+        Row: {
+          archiviato: boolean
+          argomenti: string[]
+          argomenti_mancanti: string[]
+          codice_fiscale: string | null
+          cognome: string | null
+          created_at: string
+          data_corso: string | null
+          data_nascita: string | null
+          email: string | null
+          ente: string | null
+          esito: string
+          id: string
+          integrazione: string | null
+          inviato: boolean
+          luogo_nascita: string | null
+          mime_file: string | null
+          nome: string | null
+          nome_file: string | null
+          note: string | null
+          ore: number | null
+          percorso_file: string | null
+          reparto: string | null
+          tipo_corso_id: string | null
+          tipo_corso_nome: string | null
+          updated_at: string
+        }
+        Insert: {
+          archiviato?: boolean
+          argomenti?: string[]
+          argomenti_mancanti?: string[]
+          codice_fiscale?: string | null
+          cognome?: string | null
+          created_at?: string
+          data_corso?: string | null
+          data_nascita?: string | null
+          email?: string | null
+          ente?: string | null
+          esito?: string
+          id?: string
+          integrazione?: string | null
+          inviato?: boolean
+          luogo_nascita?: string | null
+          mime_file?: string | null
+          nome?: string | null
+          nome_file?: string | null
+          note?: string | null
+          ore?: number | null
+          percorso_file?: string | null
+          reparto?: string | null
+          tipo_corso_id?: string | null
+          tipo_corso_nome?: string | null
+          updated_at?: string
+        }
+        Update: {
+          archiviato?: boolean
+          argomenti?: string[]
+          argomenti_mancanti?: string[]
+          codice_fiscale?: string | null
+          cognome?: string | null
+          created_at?: string
+          data_corso?: string | null
+          data_nascita?: string | null
+          email?: string | null
+          ente?: string | null
+          esito?: string
+          id?: string
+          integrazione?: string | null
+          inviato?: boolean
+          luogo_nascita?: string | null
+          mime_file?: string | null
+          nome?: string | null
+          nome_file?: string | null
+          note?: string | null
+          ore?: number | null
+          percorso_file?: string | null
+          reparto?: string | null
+          tipo_corso_id?: string | null
+          tipo_corso_nome?: string | null
+          updated_at?: string
         }
         Relationships: []
       }
@@ -257,6 +359,27 @@ export type Database = {
           id?: string
           nome?: string
           usi?: number
+        }
+        Relationships: []
+      }
+      opzioni_integrazione: {
+        Row: {
+          created_at: string
+          etichetta: string
+          id: string
+          ore: number | null
+        }
+        Insert: {
+          created_at?: string
+          etichetta: string
+          id?: string
+          ore?: number | null
+        }
+        Update: {
+          created_at?: string
+          etichetta?: string
+          id?: string
+          ore?: number | null
         }
         Relationships: []
       }

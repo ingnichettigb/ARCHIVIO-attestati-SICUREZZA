@@ -130,6 +130,9 @@ function Home() {
           <Button asChild variant="outline">
             <Link to="/hr">Dashboard HR</Link>
           </Button>
+          <Button asChild>
+            <Link to="/operatore">Postazione Operatore (lettura automatica)</Link>
+          </Button>
         </div>
 
 
