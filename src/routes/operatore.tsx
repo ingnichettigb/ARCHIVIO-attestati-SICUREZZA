@@ -184,11 +184,18 @@ function Operatore() {
   async function salvaInCoda() {
     if (!form.cognome || !form.codice_fiscale) return void toast.error("Servono almeno cognome e codice fiscale");
     if (form.esito === "Non valido" && !form.note.trim()) return void toast.error("Indica il motivo del rifiuto");
+    if (!form.tipo_corso_id) return void toast.error("Scegli il corso codificato dal menu");
     let percorso = form.percorso_file, mime = form.mime_file;
     if (file) {
       mime = file.type;
+      let blob: Blob = file;
+      if (mime === "application/pdf" && totPagine > 1 && pagine.trim()) {
+        const idx = parsePagine(pagine, totPagine);
+        if (!idx.length) return void toast.error(`Pagine non valide (il documento ha ${totPagine} pagine)`);
+        if (idx.length < totPagine) blob = await estraiPagine(file, idx);
+      }
       percorso = `Coda/${crypto.randomUUID()}.${estensione(mime)}`;
-      const { error } = await supabase.storage.from("attestati").upload(percorso, file, { contentType: mime });
+      const { error } = await supabase.storage.from("attestati").upload(percorso, blob, { contentType: mime });
       if (error) return void toast.error(error.message);
     }
     const payload = pulisci({ ...form, percorso_file: percorso, mime_file: mime, nome_file: nomeFileStandard(form, estensione(mime)) });
@@ -196,13 +203,21 @@ function Operatore() {
       ? await sb.from("coda_valutazioni").update(payload).eq("id", idInModifica)
       : await sb.from("coda_valutazioni").insert(payload);
     if (error) return void toast.error(error.message);
+    ricarica();
+    if (file && totPagine > 1 && !idInModifica) {
+      // Documento multi-corso: resta aperto per archiviare le altre pagine
+      toast.success("Aggiunto alla coda. Ora scegli le altre pagine e il corso successivo");
+      setPagine("");
+      setForm((f) => ({ ...f, tipo_corso_id: null, tipo_corso_nome: "", ore: null, argomenti: [], note: "", integrazione: "", argomenti_mancanti: [] }));
+      return;
+    }
     toast.success(idInModifica ? "Valutazione aggiornata" : "Aggiunto alla coda di lavoro");
     nuovo();
-    ricarica();
   }
 
   function nuovo() {
     setForm(VUOTA); setFile(null); setAnteprima(null); setAnteprimaMime(null); setIdInModifica(null);
+    setTotPagine(0); setPagine(""); setTestoLetto(""); setSuggerito(null);
   }
 
   async function modifica(r: Riga) {
