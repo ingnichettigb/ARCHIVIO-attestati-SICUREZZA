@@ -19,6 +19,7 @@ import {
   type TipoCorso,
 } from "@/lib/api";
 import { estraiAttestato } from "@/lib/estrazione.functions";
+import { contaPagine, estraiPagine, parsePagine, piuSimile, somiglianza } from "@/lib/pdf-pagine";
 
 const sb = supabase as unknown as SupabaseClient;
 
@@ -114,7 +115,15 @@ function Operatore() {
   const [anteprimaMime, setAnteprimaMime] = useState<string | null>(null);
   const [lettura, setLettura] = useState(false);
   const [selezionati, setSelezionati] = useState<Set<string>>(new Set());
+  const [totPagine, setTotPagine] = useState(0);
+  const [pagine, setPagine] = useState("");
+  const [testoLetto, setTestoLetto] = useState("");
+  const [suggerito, setSuggerito] = useState<string | null>(null);
   const inputRef = useRef<HTMLInputElement>(null);
+  const classifica = useMemo(
+    () => testoLetto ? [...tipi].map((t) => ({ t, s: somiglianza(testoLetto, t.nome_corso) })).sort((a, b) => b.s - a.s) : tipi.map((t) => ({ t, s: 0 })),
+    [tipi, testoLetto],
+  );
 
   const set = <K extends keyof Riga>(k: K, v: Riga[K]) => setForm((f) => ({ ...f, [k]: v }));
 
@@ -127,6 +136,8 @@ function Operatore() {
     setAnteprimaMime(f.type);
     setIdInModifica(null);
     setForm(VUOTA);
+    setPagine(""); setTestoLetto(""); setSuggerito(null);
+    setTotPagine(f.type === "application/pdf" ? await contaPagine(f).catch(() => 0) : 0);
     setLettura(true);
     try {
       const r = await estraiAttestato({
@@ -134,7 +145,9 @@ function Operatore() {
       });
       if (!r.ok) return void toast.error(r.errore);
       const d = r.dati;
-      const tipo = tipi.find((t) => t.nome_corso.toLowerCase() === d.tipo_corso.toLowerCase());
+      setTestoLetto(d.tipo_corso);
+      const tipo = tipi.find((t) => t.nome_corso.toLowerCase() === d.tipo_corso.toLowerCase()) ?? piuSimile(d.tipo_corso, tipi).tipo;
+      setSuggerito(tipo?.id ?? null);
       const { data: esistente } = d.codice_fiscale
         ? await sb.from("dipendenti").select("*").eq("codice_fiscale", d.codice_fiscale.toUpperCase()).maybeSingle()
         : { data: null };
