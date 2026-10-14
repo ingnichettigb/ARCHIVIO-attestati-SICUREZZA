@@ -27,7 +27,11 @@ const SCHEMA = {
     luogo_nascita: { type: "string" },
     codice_ateco: { type: "string", description: "Codice/i ATECO presenti sull'attestato (es. 85.31.20), separati da virgola, o vuoto" },
     tipo_corso: { type: "string", description: "Uno dei tipi di corso forniti, oppure il titolo letto" },
-    data_corso: { type: "string", description: "Data di fine corso/rilascio AAAA-MM-GG o vuoto" },
+    data_corso: {
+      type: "string",
+      description:
+        "Data di emissione/rilascio, fine corso o superamento esame stampata sull'attestato (AAAA-MM-GG), o vuoto. ATTENZIONE: estrai esclusivamente la data scritta sul documento, MAI la data o l'anno corrente di scansione.",
+    },
     ore: { type: ["number", "null"] },
     ente: { type: "string" },
     argomenti: { type: "array", items: { type: "string" } },
@@ -54,6 +58,11 @@ export const estraiAttestato = createServerFn({ method: "POST" })
     const prompt = `Sei un esperto di formazione sicurezza (D.Lgs. 81/2008, Accordo Stato-Regioni). Leggi l'attestato ed estrai i dati.
 Tipi di corso disponibili (scegli il più adatto, testo identico): ${data.tipiCorso.join(" | ")}
 Argomenti noti (riusa questi nomi quando corrispondono, aggiungine altri se presenti): ${data.argomenti.join(" | ")}
+
+REGOLE CRITICHE SULLA DATA DEL CORSO:
+- Estrai la data in cui il corso è stato completato o l'attestato rilasciato dall'ente formatore, così come è stampata sul documento.
+- Non usare MAI l'anno o la data corrente di oggi se non coincide con la data stampata sull'attestato. Se la data non è leggibile, lascia la stringa vuota.
+
 Valuta: "Valido" se ore e contenuti rispettano i minimi di legge; "Valido con integrazione DVR" se riconoscibile ma servono integrazioni (es. 4 o 8 ore per rischio medio/alto); "Non valido" se ore insufficienti, mancano firme/ente o illeggibile. Motivazione breve in italiano. Campi non leggibili = stringa vuota.`;
     const res = await fetch("https://ai.gateway.lovable.dev/v1/responses", {
       method: "POST",

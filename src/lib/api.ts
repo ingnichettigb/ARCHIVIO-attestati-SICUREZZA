@@ -875,9 +875,27 @@ export function normalizzaNome(s: string) {
     .replace(/^_+|_+$/g, "");
 }
 
-export function nomeFilePdf(cognome: string, nome: string, tipo: string, dataScadenza: string) {
-  const data = dataScadenza.slice(0, 10).replace(/-/g, "");
-  return `${normalizzaNome(cognome)}_${normalizzaNome(nome)}_${normalizzaNome(tipo)}_${data}.pdf`;
+/** Codice fiscale pulito: solo lettere e numeri, maiuscolo. */
+function pulisciCodiceFiscale(s: string) {
+  return (s || "").replace(/[^A-Za-z0-9]/g, "").toUpperCase();
+}
+
+/**
+ * Nome file standard per l'archivio:
+ * AAAA-MM_COGNOME_NOME_CF_TIPO.pdf
+ * dove AAAA-MM è l'anno/mese di emanazione (rilascio) dell'attestato.
+ */
+export function nomeFilePdf(
+  cognome: string,
+  nome: string,
+  tipo: string,
+  dataEmanazione: string,
+  codiceFiscale?: string,
+) {
+  const data = (dataEmanazione || "").trim();
+  const annoMese = data.length >= 7 ? data.slice(0, 7) : "ANNO-MANCANTE";
+  const cf = codiceFiscale ? `_${pulisciCodiceFiscale(codiceFiscale)}` : "";
+  return `${annoMese}_${normalizzaNome(cognome)}_${normalizzaNome(nome)}${cf}_${normalizzaNome(tipo)}.pdf`;
 }
 
 export function cartellaDipendente(d: Dipendente) {
@@ -898,7 +916,8 @@ export async function caricaDocumento(input: {
   dipendente: Dipendente;
   tipo: string;
   tipoPersonalizzato?: string | null;
-  dataScadenza: string;
+  dataCorso: string; // Data di emanazione / rilascio dell'attestato
+  dataScadenza: string; // Data di scadenza per il registro
   file: File;
 }) {
   const etichetta =
@@ -907,7 +926,8 @@ export async function caricaDocumento(input: {
     input.dipendente.cognome,
     input.dipendente.nome,
     etichetta,
-    input.dataScadenza,
+    input.dataCorso,
+    input.dipendente.codice_fiscale,
   );
   const percorso = `${CARTELLA_ARCHIVIO}/${cartellaDipendente(input.dipendente)}/${nome}`;
 
