@@ -1,3 +1,15 @@
+/*
+ * File:      operatore.tsx
+ * Percorso:  src/routes/operatore.tsx
+ * Data:      14/10/2026
+ * Modifica:  01
+ *
+ * Modifica 01:
+ *  - Icona email: la bozza ora contiene in allegato il file dell'attestato rinominato
+ *    (AAAA-MM_COGNOME_NOME_CF_TIPOCORSO.ext), tramite file .eml (vedi src/lib/email-eml.ts).
+ *  - Icona cartella: a ogni clic si apre "Salva con nome" col nome già rinominato,
+ *    per scegliere la cartella di destinazione (rimosso il selettore di cartella ricordato).
+ */
 import { createFileRoute, Link } from "@tanstack/react-router";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
@@ -20,6 +32,7 @@ import {
 } from "@/lib/api";
 import { estraiAttestato } from "@/lib/estrazione.functions";
 import { contaPagine, estraiPagine, parsePagine, piuSimile, somiglianza } from "@/lib/pdf-pagine";
+import { costruisciEml, salvaFileConNome, scaricaBlob, type AllegatoEml } from "@/lib/email-eml";
 
 const sb = supabase as unknown as SupabaseClient;
 
@@ -83,9 +96,6 @@ const fileToBase64 = (f: Blob) =>
     fr.onerror = rej;
     fr.readAsDataURL(f);
   });
-
-type DirH = { name: string; getDirectoryHandle: (n: string, o?: { create?: boolean }) => Promise<DirH>; getFileHandle: (n: string, o?: { create?: boolean }) => Promise<{ createWritable: () => Promise<{ write: (b: Blob) => Promise<void>; close: () => Promise<void> }> }> };
-let cartellaScelta: DirH | null = null;
 
 function Operatore() {
   const qc = useQueryClient();
@@ -285,34 +295,57 @@ function Operatore() {
     const persone = [...new Set(righe.map((r) => `${r.cognome} ${r.nome}`))];
     const corpo = `Gentile ${persone.length === 1 ? persone[0] : "collega"},\n\ndi seguito l'esito della verifica degli attestati di formazione sicurezza (D.Lgs. 81/2008):\n\n${righe.map((r, i) => `${i + 1}) ${riepilogo(r)}`).join("\n\n")}\n\nCordiali saluti\nUfficio Sicurezza`;
     const oggetto = `Esito verifica attestati — ${persone.join(", ")}`;
-    window.location.href = `mailto:${destinatari.join(",")}?subject=${encodeURIComponent(oggetto)}&body=${encodeURIComponent(corpo)}`;
-    if (!destinatari.length) toast.info("Nessuna email salvata: aggiungi il destinatario nella posta");
+    const conFile = righe.filter((r) => r.percorso_file);
+
+    if (!conFile.length) {
+      // Nessun documento da allegare: resta il vecchio link mailto (solo testo)
+      window.location.href = `mailto:${destinatari.join(",")}?subject=${encodeURIComponent(oggetto)}&body=${encodeURIComponent(corpo)}`;
+      toast.info(destinatari.length ? "Nessun file allegato alle righe: email con solo il testo" : "Nessun file e nessuna email salvata: aggiungi il destinatario nella posta");
+    } else {
+      try {
+        // Scarico ogni documento e lo allego con il nome standard AAAA-MM_COGNOME_NOME_CF_TIPOCORSO.ext
+        const allegati: AllegatoEml[] = [];
+        const nomiUsati = new Set<string>();
+        for (const r of conFile) {
+          const { data: blob, error } = await supabase.storage.from("attestati").download(r.percorso_file as string);
+          if (error || !blob) throw error ?? new Error(`Download non riuscito: ${r.cognome} ${r.nome}`);
+          const nomeBase = nomeFileStandard(r, estensione(r.mime_file));
+          let nome = nomeBase;
+          for (let n = 2; nomiUsati.has(nome); n++) nome = nomeBase.replace(/(\.[^.]+)$/, `_${n}$1`);
+          nomiUsati.add(nome);
+          allegati.push({ nome, mime: r.mime_file ?? "application/octet-stream", blob });
+        }
+        const eml = await costruisciEml({ a: destinatari, oggetto, corpo, allegati });
+        scaricaBlob(eml, `Esito_verifica_attestati_${new Date().toISOString().slice(0, 10)}.eml`);
+        toast.success(`Bozza email scaricata con ${allegati.length} allegat${allegati.length === 1 ? "o" : "i"}: aprila per inviarla`);
+        if (conFile.length < righe.length) toast.warning(`${righe.length - conFile.length} righe senza documento: nessun allegato per quelle`);
+        if (!destinatari.length) toast.info("Nessuna email salvata: aggiungi il destinatario nella bozza");
+      } catch (e) {
+        return void toast.error(`Preparazione email non riuscita: ${(e as Error).message}`);
+      }
+    }
     await sb.from("coda_valutazioni").update({ inviato: true }).in("id", righe.map((r) => r.id));
     ricarica();
   }
 
   async function salvaLocale(r: Riga) {
-    const w = window as unknown as { showDirectoryPicker?: (o?: unknown) => Promise<DirH> };
-    if (!w.showDirectoryPicker) return void toast.error("Salvataggio in cartella disponibile solo su Chrome o Edge da computer");
     if (!r.percorso_file) return void toast.error("Nessun file allegato");
+    const nome = nomeFileStandard(r, estensione(r.mime_file));
     try {
-      if (!cartellaScelta) cartellaScelta = await w.showDirectoryPicker({ id: "attestati-operatore", mode: "readwrite", startIn: "documents" });
-      const sotto = (r.data_corso || "0000-00").slice(0, 7);
-      const dir = await cartellaScelta.getDirectoryHandle(sotto, { create: true });
-      const nome = nomeFileStandard(r, estensione(r.mime_file));
-      try {
-        await dir.getFileHandle(nome);
-        if (!window.confirm(`"${nome}" esiste già. Sovrascrivere?`)) return;
-      } catch { /* non esiste */ }
-      const { data: blob, error } = await supabase.storage.from("attestati").download(r.percorso_file);
-      if (error || !blob) throw error ?? new Error("Download non riuscito");
-      const h = await dir.getFileHandle(nome, { create: true });
-      const wr = await h.createWritable();
-      await wr.write(blob);
-      await wr.close();
-      toast.success(`Salvato in ${cartellaScelta.name}/${sotto}/${nome}`);
+      // Si apre "Salva con nome" con il nome già rinominato: scegli tu la cartella ogni volta
+      const esito = await salvaFileConNome(
+        async () => {
+          const { data: blob, error } = await supabase.storage.from("attestati").download(r.percorso_file as string);
+          if (error || !blob) throw error ?? new Error("Download non riuscito");
+          return blob;
+        },
+        nome,
+        r.mime_file ?? "application/octet-stream",
+      );
+      if (esito === "salvato") toast.success(`Salvato: ${nome}`);
+      if (esito === "scaricato") toast.success(`File scaricato come ${nome} (cartella Download del browser)`);
     } catch (e) {
-      if ((e as Error).name !== "AbortError") toast.error((e as Error).message);
+      toast.error((e as Error).message);
     }
   }
 
@@ -483,7 +516,7 @@ function Operatore() {
                         <Icona t="Aggiungi al database" disabled={r.archiviato} onClick={() => archivia([r])}><DatabaseZap /></Icona>
                         <Icona t="Duplica" onClick={() => duplica(r)}><CopyPlus /></Icona>
                         <Icona t="Copia riepilogo" onClick={() => { navigator.clipboard.writeText(riepilogo(r)); toast.success("Copiato"); }}><Copy /></Icona>
-                        <Icona t="Salva in cartella (AAAA-MM)" onClick={() => salvaLocale(r)}><FolderDown /></Icona>
+                        <Icona t="Salva con nome (scegli la cartella)" onClick={() => salvaLocale(r)}><FolderDown /></Icona>
                         <Icona t="Invia email" onClick={() => inviaEmail([r])}><Mail /></Icona>
                         <Icona t="Cancella" onClick={() => cancella(r)} danger><Trash2 /></Icona>
                       </div>
