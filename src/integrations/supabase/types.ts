@@ -338,6 +338,73 @@ export type Database = {
           },
         ]
       }
+      integrazioni_dvr: {
+        Row: {
+          argomenti_mancanti: string[]
+          attestato_chiusura_id: string | null
+          attestato_origine_id: string | null
+          created_at: string
+          data_chiusura: string | null
+          data_richiesta: string
+          descrizione: string
+          dipendente_id: string
+          id: string
+          ore: number | null
+          stato: string
+          tipo_corso_nome: string | null
+        }
+        Insert: {
+          argomenti_mancanti?: string[]
+          attestato_chiusura_id?: string | null
+          attestato_origine_id?: string | null
+          created_at?: string
+          data_chiusura?: string | null
+          data_richiesta?: string
+          descrizione: string
+          dipendente_id: string
+          id?: string
+          ore?: number | null
+          stato?: string
+          tipo_corso_nome?: string | null
+        }
+        Update: {
+          argomenti_mancanti?: string[]
+          attestato_chiusura_id?: string | null
+          attestato_origine_id?: string | null
+          created_at?: string
+          data_chiusura?: string | null
+          data_richiesta?: string
+          descrizione?: string
+          dipendente_id?: string
+          id?: string
+          ore?: number | null
+          stato?: string
+          tipo_corso_nome?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "integrazioni_dvr_attestato_chiusura_id_fkey"
+            columns: ["attestato_chiusura_id"]
+            isOneToOne: false
+            referencedRelation: "attestati_caricati"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "integrazioni_dvr_attestato_origine_id_fkey"
+            columns: ["attestato_origine_id"]
+            isOneToOne: false
+            referencedRelation: "attestati_caricati"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "integrazioni_dvr_dipendente_id_fkey"
+            columns: ["dipendente_id"]
+            isOneToOne: false
+            referencedRelation: "dipendenti"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       materie: {
         Row: {
           attivo: boolean

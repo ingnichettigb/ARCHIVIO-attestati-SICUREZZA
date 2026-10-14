@@ -22,6 +22,13 @@
       "when": 1791965182343,
       "tag": "0002_codice_ateco",
       "breakpoints": true
+    },
+    {
+      "idx": 3,
+      "version": "7",
+      "when": 1791967353651,
+      "tag": "0003_integrazioni_dvr",
+      "breakpoints": true
     }
   ]
 }
