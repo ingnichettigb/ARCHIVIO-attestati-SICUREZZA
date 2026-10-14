@@ -2,7 +2,14 @@
  * File:      operatore.tsx
  * Percorso:  src/routes/operatore.tsx
  * Data:      14/10/2026
- * Modifica:  06
+ * Modifica:  07
+ *
+ * Modifica 07:
+ *  - Archiviazione con esito "Valido con integrazione DVR": oltre all'attestato viene creata la voce
+ *    "Da completare" (ore, argomenti mancanti) nella tabella integrazioni_dvr, visibile nella scheda lavoratore.
+ *  - Archiviando un attestato "Valido" / "Valido con note" per un lavoratore con integrazioni da completare,
+ *    compare un avviso: si può chiudere l'integrazione collegandola a quell'attestato.
+ *  - Richiede src/lib/api.ts (modifica 01) e lo script SQL 20261014180000_integrazioni_dvr.sql.
  *
  * Modifica 06:
  *  - Sezione "1. Dati del lavoratore": il campo Email è sostituito dal campo "Codice ATECO"
@@ -55,6 +62,7 @@ import {
 } from "@/components/ui/select";
 import {
   getTipiCorso, upsertDipendente, normalizzaNome, CARTELLA_ARCHIVIO, cartellaDipendente, formatData,
+  creaIntegrazioneDvr, getIntegrazioniDvrAperte, chiudiIntegrazioneDvr,
   type TipoCorso,
 } from "@/lib/api";
 import { estraiAttestato } from "@/lib/estrazione.functions";
@@ -369,6 +377,7 @@ function Operatore() {
 
   async function archivia(righe: Riga[]) {
     let ok = 0;
+    const integrazioniCreateOra = new Set<string>();
     for (const r of righe) {
       if (r.archiviato) continue;
       try {
@@ -388,16 +397,38 @@ function Operatore() {
           const { data: blob } = await supabase.storage.from("attestati").download(r.percorso_file);
           if (blob) await supabase.storage.from("attestati").upload(percorsoFinale, blob, { upsert: true, contentType: r.mime_file ?? "application/octet-stream" });
         }
-        const { error } = await supabase.from("attestati_caricati").insert({
+        const { data: nuovo, error } = await supabase.from("attestati_caricati").insert({
           dipendente_id: dip.id, codice_fiscale: dip.codice_fiscale, tipo_corso_id: r.tipo_corso_id,
           data_corso: r.data_corso, ore_dichiarate: r.ore, url_foto_fronte: percorsoFinale, url_foto_retro: null,
           stato_validazione: r.esito === "Non valido" ? "Respinto" : "Approvato",
           note_rifiuto: r.esito === "Valido" ? (r.note || null) : riepilogo(r),
           data_validazione: new Date().toISOString(),
-        });
+        }).select("id").single();
         if (error) throw error;
         await sb.from("coda_valutazioni").update({ archiviato: true }).eq("id", r.id);
         ok++;
+
+        // Integrazioni DVR: crea il debito formativo oppure offre di chiudere quelli aperti
+        try {
+          if (r.esito === "Valido con integrazione DVR") {
+            const creata = await creaIntegrazioneDvr({
+              dipendente_id: dip.id, attestato_origine_id: nuovo?.id ?? null, tipo_corso_nome: r.tipo_corso_nome || null,
+              descrizione: r.integrazione || "Integrazione DVR",
+              ore: Number(r.integrazione.match(/(\d+)\s*or/i)?.[1]) || null,
+              argomenti_mancanti: r.argomenti_mancanti,
+            });
+            integrazioniCreateOra.add(creata.id);
+          } else if (r.esito !== "Non valido") {
+            const aperte = (await getIntegrazioniDvrAperte(dip.id)).filter((i) => !integrazioniCreateOra.has(i.id));
+            for (const i of aperte) {
+              if (window.confirm(`${r.cognome} ${r.nome} ha un'integrazione DVR da completare (${i.descrizione}).\n\nChiuderla con questo attestato (${r.tipo_corso_nome}, ${formatData(r.data_corso)})?`)) {
+                await chiudiIntegrazioneDvr(i.id, nuovo?.id ?? null);
+              }
+            }
+          }
+        } catch (e) {
+          toast.error(`Attestato archiviato, ma integrazione DVR non aggiornata: ${(e as Error).message}`);
+        }
       } catch (e) {
         toast.error((e as Error).message);
       }
