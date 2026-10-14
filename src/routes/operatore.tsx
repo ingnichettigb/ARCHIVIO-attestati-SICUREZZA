@@ -120,9 +120,14 @@ export function pulisciCF(s: string) {
   return (s || "").replace(/[^A-Za-z0-9]/g, "").toUpperCase();
 }
 
-/** AAAA-MM_COGNOME_NOME_CF_TIPOCORSO.ext */
+/**
+ * Denominazione standard con anno e mese di emanazione del documento:
+ * AAAA-MM_COGNOME_NOME_CF_TIPOCORSO.ext
+ * Il prefisso deriva sempre da data_corso (data stampata sull'attestato), mai dalla data odierna.
+ */
 export function nomeFileStandard(r: Pick<Riga, "data_corso" | "cognome" | "nome" | "codice_fiscale" | "tipo_corso_nome">, ext = "pdf") {
-  const am = (r.data_corso || "").slice(0, 7) || "0000-00";
+  const dataDoc = (r.data_corso || "").trim();
+  const am = dataDoc.length >= 7 ? dataDoc.slice(0, 7) : "ANNO-MANCANTE";
   return `${am}_${normalizzaNome(r.cognome)}_${normalizzaNome(r.nome)}_${pulisciCF(r.codice_fiscale)}_${normalizzaNome(r.tipo_corso_nome)}.${ext}`;
 }
 const estensione = (mime: string | null) => (mime === "application/pdf" ? "pdf" : mime?.split("/")[1]?.replace("jpeg", "jpg") || "jpg");
