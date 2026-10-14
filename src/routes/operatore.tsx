@@ -2,7 +2,12 @@
  * File:      operatore.tsx
  * Percorso:  src/routes/operatore.tsx
  * Data:      14/10/2026
- * Modifica:  01
+ * Modifica:  02
+ *
+ * Modifica 02:
+ *  - Anteprima documento: aggiunta l'icona "Ruota di 90°" (PDF e foto) accanto a "Altro documento".
+ *    Ogni clic ruota ancora di 90° in senso orario; la rotazione vale per la lettura nell'anteprima.
+ *    Logica in src/lib/ruota-documento.ts.
  *
  * Modifica 01:
  *  - Icona email: la bozza ora contiene in allegato il file dell'attestato rinominato
@@ -15,7 +20,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
 import {
-  ArrowLeft, Copy, CopyPlus, DatabaseZap, FolderDown, Mail, Plus, Sparkles, Trash2, Upload, Loader2, Pencil,
+  ArrowLeft, Copy, CopyPlus, DatabaseZap, FolderDown, Mail, Plus, Sparkles, Trash2, Upload, Loader2, Pencil, RotateCw,
 } from "lucide-react";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { supabase } from "@/integrations/supabase/client";
@@ -32,6 +37,7 @@ import {
 } from "@/lib/api";
 import { estraiAttestato } from "@/lib/estrazione.functions";
 import { contaPagine, estraiPagine, parsePagine, piuSimile, somiglianza } from "@/lib/pdf-pagine";
+import { ruotaDocumento } from "@/lib/ruota-documento";
 import { costruisciEml, salvaFileConNome, scaricaBlob, type AllegatoEml } from "@/lib/email-eml";
 
 const sb = supabase as unknown as SupabaseClient;
@@ -130,6 +136,9 @@ function Operatore() {
   const [testoLetto, setTestoLetto] = useState("");
   const [suggerito, setSuggerito] = useState<string | null>(null);
   const inputRef = useRef<HTMLInputElement>(null);
+  const [rotazione, setRotazione] = useState(0);
+  const [ruotando, setRuotando] = useState(false);
+  const sorgenteRef = useRef<Blob | null>(null);
   const classifica = useMemo(
     () => testoLetto ? [...tipi].map((t) => ({ t, s: somiglianza(testoLetto, t.nome_corso) })).sort((a, b) => b.s - a.s) : tipi.map((t) => ({ t, s: 0 })),
     [tipi, testoLetto],
@@ -144,6 +153,7 @@ function Operatore() {
     setFile(f);
     setAnteprima(URL.createObjectURL(f));
     setAnteprimaMime(f.type);
+    sorgenteRef.current = f; setRotazione(0);
     setIdInModifica(null);
     setForm(VUOTA);
     setPagine(""); setTestoLetto(""); setSuggerito(null);
@@ -176,6 +186,31 @@ function Operatore() {
       toast.error((e as Error).message);
     } finally {
       setLettura(false);
+    }
+  }
+
+  /** Ruota di 90° (in senso orario) il documento mostrato in anteprima: ogni clic ruota ancora. */
+  async function ruota() {
+    if (!anteprima || !anteprimaMime || ruotando) return;
+    setRuotando(true);
+    try {
+      let sorgente = sorgenteRef.current;
+      if (!sorgente) {
+        // Riga riaperta dalla coda: scarico l'originale una sola volta
+        if (!form.percorso_file) return;
+        const { data, error } = await supabase.storage.from("attestati").download(form.percorso_file);
+        if (error || !data) throw error ?? new Error("Download non riuscito");
+        sorgente = data;
+        sorgenteRef.current = data;
+      }
+      const nuovoAngolo = (rotazione + 90) % 360;
+      const ruotato = await ruotaDocumento(sorgente, anteprimaMime, nuovoAngolo);
+      setRotazione(nuovoAngolo);
+      setAnteprima(URL.createObjectURL(ruotato));
+    } catch (e) {
+      toast.error(`Rotazione non riuscita: ${(e as Error).message}`);
+    } finally {
+      setRuotando(false);
     }
   }
 
@@ -227,11 +262,13 @@ function Operatore() {
   function nuovo() {
     setForm(VUOTA); setFile(null); setAnteprima(null); setAnteprimaMime(null); setIdInModifica(null);
     setTotPagine(0); setPagine(""); setTestoLetto(""); setSuggerito(null);
+    sorgenteRef.current = null; setRotazione(0);
   }
 
   async function modifica(r: Riga) {
     const { id: _id, ...resto } = r;
     setForm(resto); setIdInModifica(r.id); setFile(null);
+    sorgenteRef.current = null; setRotazione(0);
     setAnteprimaMime(r.mime_file);
     setAnteprima(r.percorso_file ? ((await supabase.storage.from("attestati").createSignedUrl(r.percorso_file, 3600)).data?.signedUrl ?? null) : null);
     window.scrollTo({ top: 0, behavior: "smooth" });
@@ -375,7 +412,13 @@ function Operatore() {
               <>
                 <div className="mb-2 flex items-center justify-between gap-2">
                   <span className="truncate text-sm text-muted-foreground">{file?.name ?? form.nome_file}</span>
-                  <Button size="sm" variant="outline" onClick={() => inputRef.current?.click()}><Upload className="h-4 w-4" /> Altro documento</Button>
+                  <div className="flex shrink-0 items-center gap-2">
+                    <Button size="sm" variant="outline" disabled={ruotando} onClick={ruota} title="Ruota di 90° (clicca ancora per continuare)" aria-label="Ruota di 90°">
+                      {ruotando ? <Loader2 className="h-4 w-4 animate-spin" /> : <RotateCw className="h-4 w-4" />}
+                      {rotazione ? <span className="text-xs">{rotazione}°</span> : null}
+                    </Button>
+                    <Button size="sm" variant="outline" onClick={() => inputRef.current?.click()}><Upload className="h-4 w-4" /> Altro documento</Button>
+                  </div>
                 </div>
                 {file && totPagine > 1 && (
                   <div className="mb-2 space-y-2 rounded-lg border border-primary/40 bg-primary/5 p-2 text-sm">
@@ -397,7 +440,7 @@ function Operatore() {
                   </div>
                 )}
                 {anteprimaMime === "application/pdf"
-                  ? <object data={anteprima} type="application/pdf" className="h-full min-h-[500px] w-full flex-1 rounded-md border" />
+                  ? <object key={anteprima} data={anteprima} type="application/pdf" className="h-full min-h-[500px] w-full flex-1 rounded-md border" />
                   : <img src={anteprima} alt="Attestato" className="max-h-[640px] w-full rounded-md border object-contain" />}
               </>
             ) : (
