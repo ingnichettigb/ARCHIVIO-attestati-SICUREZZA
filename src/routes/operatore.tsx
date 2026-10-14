@@ -2,7 +2,12 @@
  * File:      operatore.tsx
  * Percorso:  src/routes/operatore.tsx
  * Data:      14/10/2026
- * Modifica:  05
+ * Modifica:  06
+ *
+ * Modifica 06:
+ *  - Sezione "1. Dati del lavoratore": il campo Email è sostituito dal campo "Codice ATECO"
+ *    (già letto in automatico e salvato). L'email non si digita più, ma se il dipendente è già
+ *    in archivio viene recuperata e usata come destinatario della bozza email di esito.
  *
  * Modifica 05:
  *  - Corretto l'errore "value too long for type character varying(16)": il codice fiscale
@@ -544,10 +549,9 @@ function Operatore() {
               <Campo label="Cognome"><Input value={form.cognome} onChange={(e) => set("cognome", e.target.value.toUpperCase())} /></Campo>
               <Campo label="Nome"><Input value={form.nome} onChange={(e) => set("nome", e.target.value.toUpperCase())} /></Campo>
               <Campo label="Codice fiscale"><Input value={form.codice_fiscale} onChange={(e) => set("codice_fiscale", pulisciCF(e.target.value))} /></Campo>
-              <Campo label="Email"><Input type="email" value={form.email} onChange={(e) => set("email", e.target.value)} /></Campo>
+              <Campo label="Codice ATECO"><Input value={form.codice_ateco} placeholder="es. 85.31.20" onChange={(e) => set("codice_ateco", e.target.value)} /></Campo>
               <Campo label="Data di nascita"><Input type="date" value={form.data_nascita} onChange={(e) => set("data_nascita", e.target.value)} /></Campo>
               <Campo label="Luogo di nascita"><Input value={form.luogo_nascita} onChange={(e) => set("luogo_nascita", e.target.value)} /></Campo>
-              <Campo label="Codice ATECO"><Input value={form.codice_ateco} placeholder="es. 85.31.20" onChange={(e) => set("codice_ateco", e.target.value)} /></Campo>
             </div>
 
             <h2 className="font-display font-semibold">2. Corso</h2>
