@@ -450,34 +450,52 @@ export type Database = {
       }
       tipi_corso: {
         Row: {
+          anni_aggiornamento: number | null
+          codice: string | null
+          codice_corso_aggiornamento: string | null
           created_at: string
           durata_validita_anni: number | null
           id: string
           livello_specifico: string
           macro_categoria: string
           nome_corso: string
+          ordine: number | null
+          ore_aggiornamento: number | null
           ore_minime_legge: number | null
           updated_at: string
+          visibile_lavoratore: boolean | null
         }
         Insert: {
+          anni_aggiornamento?: number | null
+          codice?: string | null
+          codice_corso_aggiornamento?: string | null
           created_at?: string
           durata_validita_anni?: number | null
           id?: string
           livello_specifico: string
           macro_categoria: string
           nome_corso: string
+          ordine?: number | null
+          ore_aggiornamento?: number | null
           ore_minime_legge?: number | null
           updated_at?: string
+          visibile_lavoratore?: boolean | null
         }
         Update: {
+          anni_aggiornamento?: number | null
+          codice?: string | null
+          codice_corso_aggiornamento?: string | null
           created_at?: string
           durata_validita_anni?: number | null
           id?: string
           livello_specifico?: string
           macro_categoria?: string
           nome_corso?: string
+          ordine?: number | null
+          ore_aggiornamento?: number | null
           ore_minime_legge?: number | null
           updated_at?: string
+          visibile_lavoratore?: boolean | null
         }
         Relationships: []
       }
