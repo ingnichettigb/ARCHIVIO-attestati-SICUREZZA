@@ -2,7 +2,12 @@
  * File:      operatore.tsx
  * Percorso:  src/routes/operatore.tsx
  * Data:      14/10/2026
- * Modifica:  02
+ * Modifica:  03
+ *
+ * Modifica 03:
+ *  - Sezione "3. Valutazione": nuovo esito "Valido con note". Si sceglie la nota da un elenco:
+ *    la prima (predefinita) è già nel codice, le altre si aggiungono e vengono ricordate nella
+ *    tabella Supabase note_valutazione (vedi supabase/migrations/20261014120000_note_valutazione.sql).
  *
  * Modifica 02:
  *  - Anteprima documento: aggiunta l'icona "Ruota di 90°" (PDF e foto) accanto a "Altro documento".
@@ -56,8 +61,12 @@ export const Route = createFileRoute("/operatore")({
   component: Operatore,
 });
 
-type Esito = "Valido" | "Valido con integrazione DVR" | "Non valido";
-const ESITI: Esito[] = ["Valido", "Valido con integrazione DVR", "Non valido"];
+type Esito = "Valido" | "Valido con note" | "Valido con integrazione DVR" | "Non valido";
+const ESITI: Esito[] = ["Valido", "Valido con note", "Valido con integrazione DVR", "Non valido"];
+
+/** Prima nota dell'elenco "Valido con note": sempre presente e proposta di default. */
+const NOTA_PREDEFINITA = "L'attestato è parziale rispetto alle esigenze aziendali, sarà necessario integrare con la seconda parte della formazione specifica e relativo test.";
+type NotaVal = { id: string; testo: string; predefinita: boolean };
 
 type Riga = {
   id: string;
@@ -122,6 +131,18 @@ function Operatore() {
       return (data ?? []).map((r: Riga) => ({ ...VUOTA, ...Object.fromEntries(Object.entries(r).map(([k, v]) => [k, v ?? (VUOTA as Record<string, unknown>)[k]])) })) as Riga[];
     },
   });
+  const { data: noteSalvate = [] } = useQuery({
+    queryKey: ["note-valutazione"],
+    queryFn: async () => {
+      const { data, error } = await sb.from("note_valutazione").select("id,testo").order("created_at");
+      if (error) return []; // tabella non ancora creata: resta solo la nota predefinita
+      return (data ?? []).map((x: { id: string; testo: string }) => ({ id: x.id, testo: x.testo, predefinita: false })) as NotaVal[];
+    },
+  });
+  const noteElenco = useMemo<NotaVal[]>(
+    () => [{ id: "predefinita", testo: NOTA_PREDEFINITA, predefinita: true }, ...noteSalvate.filter((n) => n.testo !== NOTA_PREDEFINITA)],
+    [noteSalvate],
+  );
   const ricarica = () => qc.invalidateQueries({ queryKey: ["coda"] });
 
   const [form, setForm] = useState<Omit<Riga, "id">>(VUOTA);
@@ -214,6 +235,36 @@ function Operatore() {
     }
   }
 
+  /** Cambia esito; con "Valido con note" propone subito la nota predefinita (se non c'è già una nota dell'elenco). */
+  function scegliEsito(e: Esito) {
+    setForm((f) => {
+      const notaDellElenco = noteElenco.some((n) => n.testo === f.note);
+      if (e === "Valido con note") return { ...f, esito: e, note: notaDellElenco ? f.note : NOTA_PREDEFINITA };
+      return { ...f, esito: e, note: notaDellElenco ? "" : f.note };
+    });
+  }
+
+  async function aggiungiNota() {
+    const v = window.prompt("Nuova nota: verrà ricordata e potrai sceglierla anche in futuro", form.note);
+    const testo = v?.trim();
+    if (!testo) return;
+    const esistente = noteElenco.find((n) => n.testo.toLowerCase() === testo.toLowerCase());
+    if (esistente) { set("note", esistente.testo); return void toast.info("Nota già presente: l'ho selezionata"); }
+    const { error } = await sb.from("note_valutazione").insert({ testo });
+    if (error) return void toast.error(`Nota non salvata (${error.message}). Va creata la tabella note_valutazione: vedi il file SQL.`);
+    qc.invalidateQueries({ queryKey: ["note-valutazione"] });
+    set("note", testo);
+    toast.success("Nota salvata nell'elenco");
+  }
+
+  async function eliminaNota(n: NotaVal) {
+    if (!window.confirm(`Eliminare questa nota dall'elenco?\n\n${n.testo}`)) return;
+    const { error } = await sb.from("note_valutazione").delete().eq("id", n.id);
+    if (error) return void toast.error(error.message);
+    qc.invalidateQueries({ queryKey: ["note-valutazione"] });
+    if (form.note === n.testo) set("note", "");
+  }
+
   async function aggiungiVoce(tabella: "argomenti_corso" | "opzioni_integrazione") {
     const v = window.prompt(tabella === "argomenti_corso" ? "Nuovo argomento" : "Nuova integrazione DVR (es. Integrazione 12 ore)");
     if (!v?.trim()) return;
@@ -229,6 +280,7 @@ function Operatore() {
   async function salvaInCoda() {
     if (!form.cognome || !form.codice_fiscale) return void toast.error("Servono almeno cognome e codice fiscale");
     if (form.esito === "Non valido" && !form.note.trim()) return void toast.error("Indica il motivo del rifiuto");
+    if (form.esito === "Valido con note" && !form.note.trim()) return void toast.error("Scegli o scrivi la nota da allegare all'esito");
     if (!form.tipo_corso_id) return void toast.error("Scegli il corso codificato dal menu");
     let percorso = form.percorso_file, mime = form.mime_file;
     if (file) {
@@ -497,12 +549,32 @@ function Operatore() {
             <Chips titolo="Argomenti trattati" voci={tuttiArgomenti} attivi={form.argomenti} onToggle={(a) => toggleArg("argomenti", a)} onAggiungi={() => aggiungiVoce("argomenti_corso")} />
 
             <h2 className="font-display font-semibold">3. Valutazione</h2>
-            <div className="grid grid-cols-3 gap-2">
+            <div className="grid grid-cols-2 gap-2">
               {ESITI.map((e) => (
-                <button key={e} type="button" onClick={() => set("esito", e)}
+                <button key={e} type="button" onClick={() => scegliEsito(e)}
                   className={`rounded-lg border p-2 text-sm font-medium ${form.esito === e ? esitoClass(e) : "hover:bg-muted"}`}>{e}</button>
               ))}
             </div>
+            {form.esito === "Valido con note" && (
+              <div className="space-y-2 rounded-lg border border-primary/40 bg-primary/5 p-3">
+                <span className="text-xs font-medium text-muted-foreground">Nota da allegare all'esito: scegline una (puoi modificarla nel campo sotto)</span>
+                <div className="space-y-1">
+                  {noteElenco.map((n) => (
+                    <div key={n.id} className="flex items-start gap-1">
+                      <button type="button" onClick={() => set("note", n.testo)}
+                        className={`flex-1 rounded-md border p-2 text-left text-xs ${form.note === n.testo ? "border-primary bg-primary/10 font-medium" : "hover:bg-muted"}`}>
+                        {n.testo}{n.predefinita && <span className="ml-1 text-muted-foreground">(predefinita)</span>}
+                      </button>
+                      {!n.predefinita && (
+                        <Button size="icon" variant="ghost" title="Elimina nota" aria-label="Elimina nota" onClick={() => eliminaNota(n)}
+                          className="h-7 w-7 text-destructive [&_svg]:h-4 [&_svg]:w-4"><Trash2 /></Button>
+                      )}
+                    </div>
+                  ))}
+                </div>
+                <button type="button" onClick={aggiungiNota} className="rounded-full border border-dashed px-2 py-0.5 text-xs text-primary">+ Nuova nota (viene ricordata)</button>
+              </div>
+            )}
             {form.esito === "Valido con integrazione DVR" && (
               <div className="space-y-2 rounded-lg border border-warning/40 bg-warning/10 p-3">
                 <div className="flex gap-2">
@@ -515,7 +587,7 @@ function Operatore() {
                 <Chips titolo="Argomenti da integrare" voci={argomenti} attivi={form.argomenti_mancanti} onToggle={(a) => toggleArg("argomenti_mancanti", a)} onAggiungi={() => aggiungiVoce("argomenti_corso")} />
               </div>
             )}
-            <Campo label={form.esito === "Non valido" ? "Motivo del rifiuto (obbligatorio)" : "Note / motivazione"}>
+            <Campo label={form.esito === "Non valido" ? "Motivo del rifiuto (obbligatorio)" : form.esito === "Valido con note" ? "Nota (modificabile)" : "Note / motivazione"}>
               <Textarea rows={3} value={form.note} onChange={(e) => set("note", e.target.value)} />
             </Campo>
             {nomeFinale && <p className="rounded-md bg-muted px-3 py-2 font-mono text-xs">File: {(form.data_corso || "0000-00").slice(0, 7)}/{nomeFinale}</p>}
@@ -551,7 +623,7 @@ function Operatore() {
                     <td className="p-2"><div className="font-medium">{r.cognome} {r.nome}</div><div className="font-mono text-xs text-muted-foreground">{r.codice_fiscale}</div></td>
                     <td className="p-2">{r.tipo_corso_nome || <span className="text-destructive">da scegliere</span>}<div className="text-xs text-muted-foreground">{r.ore ?? "?"} ore</div></td>
                     <td className="p-2">{formatData(r.data_corso)}</td>
-                    <td className="p-2"><span className={`rounded-full border px-2 py-0.5 text-xs ${esitoClass(r.esito)}`}>{r.esito}</span>{r.integrazione && r.esito !== "Valido" && r.esito !== "Non valido" && <div className="mt-1 text-xs text-muted-foreground">{r.integrazione}</div>}</td>
+                    <td className="p-2"><span className={`rounded-full border px-2 py-0.5 text-xs ${esitoClass(r.esito)}`}>{r.esito}</span>{r.integrazione && r.esito === "Valido con integrazione DVR" && <div className="mt-1 text-xs text-muted-foreground">{r.integrazione}</div>}{r.esito === "Valido con note" && r.note && <div className="mt-1 max-w-[240px] truncate text-xs text-muted-foreground" title={r.note}>{r.note}</div>}</td>
                     <td className="p-2 text-xs">{r.archiviato ? <span className="text-success">Archiviato nel DB ✓</span> : "Bozza"}{r.inviato && <div className="text-primary">Email preparata</div>}</td>
                     <td className="p-2">
                       <div className="flex justify-end gap-1">
@@ -578,6 +650,7 @@ function Operatore() {
 function esitoClass(e: string) {
   if (e === "Valido") return "border-success/40 bg-success/12 text-success";
   if (e === "Non valido") return "border-destructive/40 bg-destructive/12 text-destructive";
+  if (e === "Valido con note") return "border-primary/40 bg-primary/10 text-primary";
   return "border-warning/45 bg-warning/15 text-warning-foreground";
 }
 
