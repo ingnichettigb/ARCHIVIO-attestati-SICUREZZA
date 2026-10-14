@@ -205,7 +205,6 @@ function Operatore() {
     if (error) return void toast.error(error.message);
     ricarica();
     if (file && totPagine > 1 && !idInModifica) {
-      // Documento multi-corso: resta aperto per archiviare le altre pagine
       toast.success("Aggiunto alla coda. Ora scegli le altre pagine e il corso successivo");
       setPagine("");
       setForm((f) => ({ ...f, tipo_corso_id: null, tipo_corso_nome: "", ore: null, argomenti: [], note: "", integrazione: "", argomenti_mancanti: [] }));
@@ -364,8 +363,6 @@ function Operatore() {
                     <p className="text-xs text-muted-foreground">Verrà salvato un PDF con le sole pagine scelte. Dopo l'aggiunta alla coda il documento resta aperto per il corso successivo.</p>
                   </div>
                 )}
-                <div className="hidden">
-                </div>
                 {anteprimaMime === "application/pdf"
                   ? <object data={anteprima} type="application/pdf" className="h-full min-h-[500px] w-full flex-1 rounded-md border" />
                   : <img src={anteprima} alt="Attestato" className="max-h-[640px] w-full rounded-md border object-contain" />}
@@ -509,7 +506,12 @@ function esitoClass(e: string) {
 }
 
 function Campo({ label, children, className = "" }: { label: string; children: React.ReactNode; className?: string }) {
-  return <label className={`block space-y-1 ${className}`}><span className="text-xs font-medium text-muted-foreground">{label}</span>{children}</label>;
+  return (
+    <div className={`space-y-1 ${className}`}>
+      <span className="block text-xs font-medium text-muted-foreground">{label}</span>
+      {children}
+    </div>
+  );
 }
 
 function Chips({ titolo, voci, attivi, onToggle, onAggiungi }: { titolo: string; voci: string[]; attivi: string[]; onToggle: (a: string) => void; onAggiungi: () => void }) {
