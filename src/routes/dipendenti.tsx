@@ -1,3 +1,16 @@
+/*
+ * File:      dipendenti.tsx
+ * Percorso:  src/routes/dipendenti.tsx
+ * Data:      14/10/2026
+ * Modifica:  01
+ *
+ * Modifica 01:
+ *  - Scheda lavoratore: se ha integrazioni DVR da completare compare, sotto "Incarichi e formazione",
+ *    un riquadro arancione "Integrazione DVR: N ore - Da completare" con gli argomenti da integrare
+ *    e il pulsante "Segna completata". Senza integrazioni la scheda resta come prima.
+ *  - Tabella "Tutti gli attestati": le integrazioni compaiono come righe con stato
+ *    "Da completare" / "Completata".
+ */
 import { createFileRoute, Link } from "@tanstack/react-router";
 import { useMemo, useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
@@ -18,10 +31,12 @@ import { ImpostazioniDialog } from "@/components/ImpostazioniDialog";
 import { DocumentiAttestati } from "@/components/DocumentiAttestati";
 import {
   aggiornaRepartoDipendente,
+  chiudiIntegrazioneDvr,
   etichettaStato,
   formatData,
   getAttestati,
   getDipendenti,
+  getIntegrazioniDvr,
   getReparti,
   repartoLeggibile,
   riepilogoIncarichi,
@@ -30,6 +45,7 @@ import {
   statoBadgeClass,
   upsertDipendente,
   type Dipendente,
+  type IntegrazioneDvr,
 } from "@/lib/api";
 
 export const Route = createFileRoute("/dipendenti")({
@@ -90,6 +106,11 @@ function DipendentiPage() {
     queryKey: ["attestati", "Tutti"],
     queryFn: () => getAttestati("Tutti"),
   });
+  const { data: integrazioni = [] } = useQuery({
+    queryKey: ["integrazioni-dvr"],
+    queryFn: getIntegrazioniDvr,
+    retry: false,
+  });
 
   // Reparti scelti dal lavoratore nel modulo (solo quelli attivi).
   const repartiAttivi = useMemo(
@@ -126,6 +147,19 @@ function DipendentiPage() {
 
   const corrente = dipendenti.find((d) => d.id === sel) ?? null;
   const suoi = attestati.filter((a) => a.dipendente_id === sel);
+  const suoiInteg = integrazioni.filter((i) => i.dipendente_id === sel);
+  const integAperte = suoiInteg.filter((i) => i.stato === "Da completare");
+
+  async function segnaCompletata(i: IntegrazioneDvr) {
+    if (!window.confirm(`Segnare come completata "${i.descrizione}" senza collegare un attestato?`)) return;
+    try {
+      await chiudiIntegrazioneDvr(i.id, null);
+      qc.invalidateQueries({ queryKey: ["integrazioni-dvr"] });
+      toast.success("Integrazione segnata come completata");
+    } catch (e) {
+      toast.error((e as Error).message);
+    }
+  }
 
   async function salva() {
     if (!form) return;
@@ -388,6 +422,27 @@ function DipendentiPage() {
 
               <div className="space-y-3">
                 <h3 className="text-sm font-semibold">Incarichi e formazione</h3>
+                {integAperte.map((i) => (
+                  <div key={i.id} className="rounded-xl border border-warning/50 bg-warning/10 p-3">
+                    <div className="flex items-center justify-between gap-2">
+                      <span className="text-sm font-medium">
+                        Integrazione DVR: {i.ore ? `${i.ore} ore` : i.descrizione}
+                      </span>
+                      <span className="rounded-full border border-warning/50 bg-warning/15 px-2 py-0.5 text-[11px] text-warning-foreground">
+                        Da completare
+                      </span>
+                    </div>
+                    <p className="mt-1 text-xs text-muted-foreground">
+                      {i.tipo_corso_nome ? `Dal corso: ${i.tipo_corso_nome} · ` : ""}richiesta il {formatData(i.data_richiesta)}
+                    </p>
+                    {i.argomenti_mancanti.length > 0 && (
+                      <p className="mt-1 text-xs">Argomenti da integrare: {i.argomenti_mancanti.join(", ")}</p>
+                    )}
+                    <Button size="sm" variant="outline" className="mt-2" onClick={() => segnaCompletata(i)}>
+                      Segna completata
+                    </Button>
+                  </div>
+                ))}
                 <div className="grid gap-3 sm:grid-cols-2">
                   {riepilogoIncarichi(suoi).map((r) => (
                     <div
@@ -479,7 +534,25 @@ function DipendentiPage() {
                         </td>
                       </tr>
                     ))}
-                    {!suoi.length && (
+                    {suoiInteg.map((i) => (
+                      <tr key={`integrazione-${i.id}`}>
+                        <td className="px-3 py-2">Integrazione DVR — {i.descrizione}</td>
+                        <td className="px-3 py-2">{formatData(i.data_richiesta)}</td>
+                        <td className="px-3 py-2 text-muted-foreground">—</td>
+                        <td className="px-3 py-2">
+                          <span
+                            className={`rounded-full border px-2 py-0.5 text-xs ${
+                              i.stato === "Completata"
+                                ? "border-success/40 bg-success/12 text-success"
+                                : "border-warning/50 bg-warning/15 text-warning-foreground"
+                            }`}
+                          >
+                            {i.stato}
+                          </span>
+                        </td>
+                      </tr>
+                    ))}
+                    {!suoi.length && !suoiInteg.length && (
                       <tr>
                         <td colSpan={4} className="px-3 py-8 text-center text-muted-foreground">
                           Nessun attestato registrato
