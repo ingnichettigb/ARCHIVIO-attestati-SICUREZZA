@@ -345,6 +345,27 @@ function Operatore() {
                   <span className="truncate text-sm text-muted-foreground">{file?.name ?? form.nome_file}</span>
                   <Button size="sm" variant="outline" onClick={() => inputRef.current?.click()}><Upload className="h-4 w-4" /> Altro documento</Button>
                 </div>
+                {file && totPagine > 1 && (
+                  <div className="mb-2 space-y-2 rounded-lg border border-primary/40 bg-primary/5 p-2 text-sm">
+                    <div className="font-medium">Documento di {totPagine} pagine — quali pagine salvare per questo corso?</div>
+                    <div className="flex flex-wrap items-center gap-1">
+                      <Button size="sm" variant={pagine === "" ? "default" : "outline"} onClick={() => setPagine("")}>Tutte</Button>
+                      {Array.from({ length: totPagine }, (_, i) => String(i + 1)).map((p) => {
+                        const sel = parsePagine(pagine, totPagine).includes(Number(p) - 1);
+                        return (
+                          <Button key={p} size="sm" variant={sel ? "default" : "outline"}
+                            onClick={() => { const cur = new Set(parsePagine(pagine, totPagine).map((x) => x + 1)); if (cur.has(Number(p))) cur.delete(Number(p)); else cur.add(Number(p)); setPagine([...cur].sort((a, b) => a - b).join(",")); }}>
+                            Pag. {p}
+                          </Button>
+                        );
+                      })}
+                      <Input className="h-8 w-28" placeholder="es. 1-2" value={pagine} onChange={(e) => setPagine(e.target.value)} />
+                    </div>
+                    <p className="text-xs text-muted-foreground">Verrà salvato un PDF con le sole pagine scelte. Dopo l'aggiunta alla coda il documento resta aperto per il corso successivo.</p>
+                  </div>
+                )}
+                <div className="hidden">
+                </div>
                 {anteprimaMime === "application/pdf"
                   ? <object data={anteprima} type="application/pdf" className="h-full min-h-[500px] w-full flex-1 rounded-md border" />
                   : <img src={anteprima} alt="Attestato" className="max-h-[640px] w-full rounded-md border object-contain" />}
@@ -380,11 +401,21 @@ function Operatore() {
 
             <h2 className="font-display font-semibold">2. Corso</h2>
             <div className="grid grid-cols-2 gap-2">
-              <Campo label="Tipo di corso" className="col-span-2">
+              {testoLetto && (
+                <p className="col-span-2 rounded-md border bg-muted/50 px-3 py-2 text-xs text-muted-foreground">
+                  📄 Testo letto dal documento: <span className="font-medium text-foreground">"{testoLetto}"</span>
+                </p>
+              )}
+              <Campo label="Corso codificato (archivio ufficiale)" className="col-span-2">
                 <Select value={form.tipo_corso_id ?? ""} onValueChange={(v) => { const t = tipi.find((x: TipoCorso) => x.id === v); setForm((f) => ({ ...f, tipo_corso_id: v, tipo_corso_nome: t?.nome_corso ?? "" })); }}>
-                  <SelectTrigger><SelectValue placeholder={form.tipo_corso_nome ? `Letto: ${form.tipo_corso_nome} — scegli` : "Scegli il corso"} /></SelectTrigger>
-                  <SelectContent>{tipi.map((t) => <SelectItem key={t.id} value={t.id}>{t.macro_categoria} · {t.nome_corso} ({t.ore_minime_legge ?? "?"}h)</SelectItem>)}</SelectContent>
+                  <SelectTrigger className={form.tipo_corso_id && form.tipo_corso_id === suggerito ? "border-primary ring-1 ring-primary" : ""}><SelectValue placeholder="Scegli il corso codificato" /></SelectTrigger>
+                  <SelectContent>{classifica.map(({ t }) => (
+                    <SelectItem key={t.id} value={t.id}>
+                      {t.id === suggerito ? "⭐ " : ""}{t.macro_categoria} · {t.nome_corso} ({t.ore_minime_legge ?? "?"}h){t.id === suggerito ? " — più simile" : ""}
+                    </SelectItem>
+                  ))}</SelectContent>
                 </Select>
+                {suggerito && form.tipo_corso_id === suggerito && <span className="mt-1 block text-xs text-primary">⭐ Suggerito in base al documento — cambialo se serve</span>}
               </Campo>
               <Campo label="Data attestato"><Input type="date" value={form.data_corso} onChange={(e) => set("data_corso", e.target.value)} /></Campo>
               <Campo label="Ore"><Input type="number" value={form.ore ?? ""} onChange={(e) => set("ore", e.target.value ? Number(e.target.value) : null)} /></Campo>
