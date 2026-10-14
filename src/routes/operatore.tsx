@@ -83,7 +83,7 @@ type NotaVal = { id: string; testo: string; predefinita: boolean };
 type Riga = {
   id: string;
   cognome: string; nome: string; codice_fiscale: string; email: string; luogo_nascita: string;
-  data_nascita: string; reparto: string;
+  data_nascita: string; reparto: string; codice_ateco: string;
   tipo_corso_id: string | null; tipo_corso_nome: string; data_corso: string; ore: number | null; ente: string;
   argomenti: string[]; esito: Esito; integrazione: string; argomenti_mancanti: string[]; note: string;
   percorso_file: string | null; mime_file: string | null; nome_file: string | null;
@@ -91,7 +91,7 @@ type Riga = {
 };
 
 const VUOTA: Omit<Riga, "id"> = {
-  cognome: "", nome: "", codice_fiscale: "", email: "", luogo_nascita: "", data_nascita: "", reparto: "",
+  cognome: "", nome: "", codice_fiscale: "", email: "", luogo_nascita: "", data_nascita: "", reparto: "", codice_ateco: "",
   tipo_corso_id: null, tipo_corso_nome: "", data_corso: "", ore: null, ente: "", argomenti: [],
   esito: "Valido", integrazione: "", argomenti_mancanti: [], note: "",
   percorso_file: null, mime_file: null, nome_file: null, archiviato: false, inviato: false,
@@ -213,6 +213,7 @@ function Operatore() {
         ...VUOTA,
         cognome: d.cognome.toUpperCase(), nome: d.nome.toUpperCase(), codice_fiscale: pulisciCF(d.codice_fiscale),
         data_nascita: d.data_nascita, luogo_nascita: d.luogo_nascita,
+        codice_ateco: d.codice_ateco || esistente?.codice_ateco || "",
         email: esistente?.email ?? "", reparto: esistente?.reparto ?? "",
         tipo_corso_id: tipo?.id ?? null, tipo_corso_nome: tipo?.nome_corso ?? d.tipo_corso,
         data_corso: d.data_corso, ore: d.ore, ente: d.ente, argomenti: d.argomenti,
@@ -374,6 +375,7 @@ function Operatore() {
           codice_fiscale: cf, cognome: r.cognome, nome: r.nome, email: r.email || null,
           reparto: r.reparto || null, sottoreparto: null, classe_concorso: null, materia: null,
           luogo_nascita: r.luogo_nascita || null, data_nascita: r.data_nascita || null,
+          codice_ateco: r.codice_ateco || null,
         });
         let percorsoFinale = r.percorso_file;
         if (r.percorso_file) {
@@ -545,6 +547,7 @@ function Operatore() {
               <Campo label="Email"><Input type="email" value={form.email} onChange={(e) => set("email", e.target.value)} /></Campo>
               <Campo label="Data di nascita"><Input type="date" value={form.data_nascita} onChange={(e) => set("data_nascita", e.target.value)} /></Campo>
               <Campo label="Luogo di nascita"><Input value={form.luogo_nascita} onChange={(e) => set("luogo_nascita", e.target.value)} /></Campo>
+              <Campo label="Codice ATECO"><Input value={form.codice_ateco} placeholder="es. 85.31.20" onChange={(e) => set("codice_ateco", e.target.value)} /></Campo>
             </div>
 
             <h2 className="font-display font-semibold">2. Corso</h2>
