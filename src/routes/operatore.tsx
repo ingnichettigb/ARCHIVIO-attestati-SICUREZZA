@@ -2,7 +2,12 @@
  * File:      operatore.tsx
  * Percorso:  src/routes/operatore.tsx
  * Data:      14/10/2026
- * Modifica:  07
+ * Modifica:  08
+ *
+ * Modifica 08:
+ *  - Bozza email: oltre al testo semplice contiene una versione formattata (HTML) in cui l'integrazione
+ *    richiesta e gli argomenti da integrare sono in grassetto; nel programma di posta si può modificare
+ *    e formattare liberamente. Richiede src/lib/email-eml.ts (modifica 02).
  *
  * Modifica 07:
  *  - Archiviazione con esito "Valido con integrazione DVR": oltre all'attestato viene creata la voce
@@ -132,6 +137,19 @@ function riepilogo(r: Riga) {
   if (r.esito === "Valido con integrazione DVR") s += `\nIntegrazione richiesta: ${r.integrazione}${r.argomenti_mancanti.length ? `\nArgomenti da integrare: ${r.argomenti_mancanti.join(", ")}` : ""}`;
   if (r.note) s += `\nNote: ${r.note}`;
   return s;
+}
+
+const esc = (t: string) => t.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+
+/** Riepilogo in HTML per l'email: integrazione richiesta e argomenti da integrare in grassetto. */
+function riepilogoHtml(r: Riga) {
+  let h = `<b>${esc(`${r.cognome} ${r.nome}`)}</b> (${esc(pulisciCF(r.codice_fiscale))})<br>Corso: ${esc(r.tipo_corso_nome)} — ${esc(formatData(r.data_corso))} — ${r.ore ?? "?"} ore<br>Esito: <b>${esc(r.esito)}</b>`;
+  if (r.esito === "Valido con integrazione DVR") {
+    h += `<br><b>Integrazione richiesta: ${esc(r.integrazione)}</b>`;
+    if (r.argomenti_mancanti.length) h += `<br><b>Argomenti da integrare: ${esc(r.argomenti_mancanti.join(", "))}</b>`;
+  }
+  if (r.note) h += `<br>Note: ${esc(r.note)}`;
+  return h;
 }
 
 const fileToBase64 = (f: Blob) =>
@@ -444,6 +462,7 @@ function Operatore() {
     const persone = [...new Set(righe.map((r) => `${r.cognome} ${r.nome}`))];
     const corpo = `Gentile ${persone.length === 1 ? persone[0] : "collega"},\n\ndi seguito l'esito della verifica degli attestati di formazione sicurezza (D.Lgs. 81/2008):\n\n${righe.map((r, i) => `${i + 1}) ${riepilogo(r)}`).join("\n\n")}\n\nCordiali saluti\nUfficio Sicurezza`;
     const oggetto = `Esito verifica attestati — ${persone.join(", ")}`;
+    const corpoHtml = `<div style="font-family:Calibri,Arial,sans-serif;font-size:11pt">Gentile ${esc(persone.length === 1 ? persone[0] : "collega")},<br><br>di seguito l'esito della verifica degli attestati di formazione sicurezza (D.Lgs. 81/2008):<br><br>${righe.map((r, i) => `${i + 1}) ${riepilogoHtml(r)}`).join("<br><br>")}<br><br>Cordiali saluti<br>Ufficio Sicurezza</div>`;
     const conFile = righe.filter((r) => r.percorso_file);
 
     if (!conFile.length) {
@@ -464,7 +483,7 @@ function Operatore() {
           nomiUsati.add(nome);
           allegati.push({ nome, mime: r.mime_file ?? "application/octet-stream", blob });
         }
-        const eml = await costruisciEml({ a: destinatari, oggetto, corpo, allegati });
+        const eml = await costruisciEml({ a: destinatari, oggetto, corpo, corpoHtml, allegati });
         scaricaBlob(eml, `Esito_verifica_attestati_${new Date().toISOString().slice(0, 10)}.eml`);
         toast.success(`Bozza email scaricata con ${allegati.length} allegat${allegati.length === 1 ? "o" : "i"}: aprila per inviarla`);
         if (conFile.length < righe.length) toast.warning(`${righe.length - conFile.length} righe senza documento: nessun allegato per quelle`);
