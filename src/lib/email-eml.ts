@@ -2,7 +2,12 @@
  * File:      email-eml.ts
  * Percorso:  src/lib/email-eml.ts
  * Data:      14/10/2026
- * Modifica:  01
+ * Modifica:  02
+ *
+ * Modifica 02:
+ *  - costruisciEml() accetta anche corpoHtml: l'email contiene il testo semplice E una versione HTML
+ *    (multipart/alternative). Con l'HTML l'operatore può usare grassetto e formattazione nel programma
+ *    di posta; con il solo testo semplice la formattazione non è possibile.
  *
  * Utilità per la Postazione Operatore:
  *  - costruisciEml(): crea una bozza email (.eml) con testo e allegati già inclusi.
@@ -53,6 +58,8 @@ export async function costruisciEml(opzioni: {
   a: string[];
   oggetto: string;
   corpo: string;
+  /** Versione formattata del corpo (HTML). Se assente l'email ha solo il testo semplice. */
+  corpoHtml?: string;
   allegati: AllegatoEml[];
 }): Promise<Blob> {
   const confine = `----=_Attestati_${crypto.randomUUID()}`;
@@ -66,12 +73,34 @@ export async function costruisciEml(opzioni: {
   righe.push(`Content-Type: multipart/mixed; boundary="${confine}"`);
   righe.push("");
 
-  righe.push(`--${confine}`);
-  righe.push("Content-Type: text/plain; charset=UTF-8");
-  righe.push("Content-Transfer-Encoding: base64");
-  righe.push("");
-  righe.push(base64Righe(enc.encode(opzioni.corpo.replace(/\r?\n/g, CRLF))));
-  righe.push("");
+  const testoSemplice = base64Righe(enc.encode(opzioni.corpo.replace(/\r?\n/g, CRLF)));
+  if (opzioni.corpoHtml) {
+    const confineAlt = `----=_Alt_${crypto.randomUUID()}`;
+    righe.push(`--${confine}`);
+    righe.push(`Content-Type: multipart/alternative; boundary="${confineAlt}"`);
+    righe.push("");
+    righe.push(`--${confineAlt}`);
+    righe.push("Content-Type: text/plain; charset=UTF-8");
+    righe.push("Content-Transfer-Encoding: base64");
+    righe.push("");
+    righe.push(testoSemplice);
+    righe.push("");
+    righe.push(`--${confineAlt}`);
+    righe.push("Content-Type: text/html; charset=UTF-8");
+    righe.push("Content-Transfer-Encoding: base64");
+    righe.push("");
+    righe.push(base64Righe(enc.encode(opzioni.corpoHtml.replace(/\r?\n/g, CRLF))));
+    righe.push("");
+    righe.push(`--${confineAlt}--`);
+    righe.push("");
+  } else {
+    righe.push(`--${confine}`);
+    righe.push("Content-Type: text/plain; charset=UTF-8");
+    righe.push("Content-Transfer-Encoding: base64");
+    righe.push("");
+    righe.push(testoSemplice);
+    righe.push("");
+  }
 
   for (const al of opzioni.allegati) {
     const nome = nomeSicuro(al.nome);
