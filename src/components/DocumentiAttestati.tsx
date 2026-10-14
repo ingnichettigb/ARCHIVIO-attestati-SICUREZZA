@@ -142,6 +142,7 @@ function DialogCaricamento({
   const inputRef = useRef<HTMLInputElement>(null);
   const [tipo, setTipo] = useState("");
   const [altro, setAltro] = useState("");
+  const [dataCorso, setDataCorso] = useState("");
   const [scadenza, setScadenza] = useState("");
   const [file, setFile] = useState<File | null>(null);
   const [anteprima, setAnteprima] = useState<string | null>(null);
@@ -163,6 +164,7 @@ function DialogCaricamento({
     if (!open) {
       setTipo("");
       setAltro("");
+      setDataCorso("");
       setScadenza("");
       setFile(null);
       setDrag(false);
@@ -171,9 +173,9 @@ function DialogCaricamento({
 
   const etichetta = tipo === "Altro" ? altro.trim() : tipo;
   const nomeFinale = useMemo(() => {
-    if (!etichetta || !scadenza || !file) return null;
-    return nomeFilePdf(dipendente.cognome, dipendente.nome, etichetta, scadenza);
-  }, [etichetta, scadenza, file, dipendente]);
+    if (!etichetta || !dataCorso || !scadenza || !file) return null;
+    return nomeFilePdf(dipendente.cognome, dipendente.nome, etichetta, dataCorso, dipendente.codice_fiscale);
+  }, [etichetta, dataCorso, scadenza, file, dipendente]);
 
   function accetta(f: File | null | undefined) {
     if (!f) return;
@@ -193,6 +195,7 @@ function DialogCaricamento({
         dipendente,
         tipo,
         tipoPersonalizzato: tipo === "Altro" ? altro.trim() : null,
+        dataCorso,
         dataScadenza: scadenza,
         file,
       });
@@ -256,12 +259,26 @@ function DialogCaricamento({
               </Select>
             </div>
             <div className="space-y-1.5">
+              <Label>Data rilascio / emanazione</Label>
+              <Input
+                type="date"
+                value={dataCorso}
+                onChange={(e) => setDataCorso(e.target.value)}
+              />
+              <span className="text-[11px] text-muted-foreground">
+                Anno/mese usati per il nome del file
+              </span>
+            </div>
+            <div className="space-y-1.5">
               <Label>Data di scadenza</Label>
               <Input
                 type="date"
                 value={scadenza}
                 onChange={(e) => setScadenza(e.target.value)}
               />
+              <span className="text-[11px] text-muted-foreground">
+                Per il calcolo dei rinnovi
+              </span>
             </div>
             {tipo === "Altro" && (
               <div className="space-y-1.5 sm:col-span-2">
