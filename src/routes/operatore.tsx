@@ -2,7 +2,14 @@
  * File:      operatore.tsx
  * Percorso:  src/routes/operatore.tsx
  * Data:      14/10/2026
- * Modifica:  04
+ * Modifica:  05
+ *
+ * Modifica 05:
+ *  - Corretto l'errore "value too long for type character varying(16)": il codice fiscale
+ *    letto dal documento poteva contenere spazi (es. "FFT GPP90L57G273Y" = 17 caratteri) mentre
+ *    nel database è lungo al massimo 16. Ora viene ripulito (solo lettere e numeri, maiuscolo)
+ *    alla lettura, alla digitazione, nel nome file, al salvataggio in coda e all'archiviazione:
+ *    funziona anche per le righe già presenti in coda.
  *
  * Modifica 04:
  *  - Anteprima: l'icona "Ruota di 90°" è ora un pulsante piccolo in alto a destra SOPRA il
@@ -90,10 +97,15 @@ const VUOTA: Omit<Riga, "id"> = {
   percorso_file: null, mime_file: null, nome_file: null, archiviato: false, inviato: false,
 };
 
+/** Codice fiscale pulito: solo lettere e numeri, maiuscolo (toglie anche gli spazi in mezzo). Nel DB il campo è max 16 caratteri. */
+export function pulisciCF(s: string) {
+  return (s || "").replace(/[^A-Za-z0-9]/g, "").toUpperCase();
+}
+
 /** AAAA-MM_COGNOME_NOME_CF_TIPOCORSO.ext */
 export function nomeFileStandard(r: Pick<Riga, "data_corso" | "cognome" | "nome" | "codice_fiscale" | "tipo_corso_nome">, ext = "pdf") {
   const am = (r.data_corso || "").slice(0, 7) || "0000-00";
-  return `${am}_${normalizzaNome(r.cognome)}_${normalizzaNome(r.nome)}_${r.codice_fiscale.toUpperCase()}_${normalizzaNome(r.tipo_corso_nome)}.${ext}`;
+  return `${am}_${normalizzaNome(r.cognome)}_${normalizzaNome(r.nome)}_${pulisciCF(r.codice_fiscale)}_${normalizzaNome(r.tipo_corso_nome)}.${ext}`;
 }
 const estensione = (mime: string | null) => (mime === "application/pdf" ? "pdf" : mime?.split("/")[1]?.replace("jpeg", "jpg") || "jpg");
 
@@ -103,7 +115,7 @@ function pulisci(r: Partial<Riga>) {
 }
 
 function riepilogo(r: Riga) {
-  let s = `${r.cognome} ${r.nome} (${r.codice_fiscale})\nCorso: ${r.tipo_corso_nome} — ${formatData(r.data_corso)} — ${r.ore ?? "?"} ore\nEsito: ${r.esito}`;
+  let s = `${r.cognome} ${r.nome} (${pulisciCF(r.codice_fiscale)})\nCorso: ${r.tipo_corso_nome} — ${formatData(r.data_corso)} — ${r.ore ?? "?"} ore\nEsito: ${r.esito}`;
   if (r.esito === "Valido con integrazione DVR") s += `\nIntegrazione richiesta: ${r.integrazione}${r.argomenti_mancanti.length ? `\nArgomenti da integrare: ${r.argomenti_mancanti.join(", ")}` : ""}`;
   if (r.note) s += `\nNote: ${r.note}`;
   return s;
@@ -195,11 +207,11 @@ function Operatore() {
       const tipo = tipi.find((t) => t.nome_corso.toLowerCase() === d.tipo_corso.toLowerCase()) ?? piuSimile(d.tipo_corso, tipi).tipo;
       setSuggerito(tipo?.id ?? null);
       const { data: esistente } = d.codice_fiscale
-        ? await sb.from("dipendenti").select("*").eq("codice_fiscale", d.codice_fiscale.toUpperCase()).maybeSingle()
+        ? await sb.from("dipendenti").select("*").eq("codice_fiscale", pulisciCF(d.codice_fiscale)).maybeSingle()
         : { data: null };
       setForm({
         ...VUOTA,
-        cognome: d.cognome.toUpperCase(), nome: d.nome.toUpperCase(), codice_fiscale: d.codice_fiscale.toUpperCase(),
+        cognome: d.cognome.toUpperCase(), nome: d.nome.toUpperCase(), codice_fiscale: pulisciCF(d.codice_fiscale),
         data_nascita: d.data_nascita, luogo_nascita: d.luogo_nascita,
         email: esistente?.email ?? "", reparto: esistente?.reparto ?? "",
         tipo_corso_id: tipo?.id ?? null, tipo_corso_nome: tipo?.nome_corso ?? d.tipo_corso,
@@ -287,6 +299,9 @@ function Operatore() {
     if (form.esito === "Non valido" && !form.note.trim()) return void toast.error("Indica il motivo del rifiuto");
     if (form.esito === "Valido con note" && !form.note.trim()) return void toast.error("Scegli o scrivi la nota da allegare all'esito");
     if (!form.tipo_corso_id) return void toast.error("Scegli il corso codificato dal menu");
+    const cf = pulisciCF(form.codice_fiscale);
+    if (cf.length > 16) return void toast.error(`Codice fiscale troppo lungo (${cf.length} caratteri, ne servono 16): controllalo`);
+    if (cf.length < 16) toast.warning(`Codice fiscale di ${cf.length} caratteri: di solito sono 16, controllalo`);
     let percorso = form.percorso_file, mime = form.mime_file;
     if (file) {
       mime = file.type;
@@ -300,7 +315,7 @@ function Operatore() {
       const { error } = await supabase.storage.from("attestati").upload(percorso, blob, { contentType: mime });
       if (error) return void toast.error(error.message);
     }
-    const payload = pulisci({ ...form, percorso_file: percorso, mime_file: mime, nome_file: nomeFileStandard(form, estensione(mime)) });
+    const payload = pulisci({ ...form, codice_fiscale: cf, percorso_file: percorso, mime_file: mime, nome_file: nomeFileStandard(form, estensione(mime)) });
     const { error } = idInModifica
       ? await sb.from("coda_valutazioni").update(payload).eq("id", idInModifica)
       : await sb.from("coda_valutazioni").insert(payload);
@@ -353,8 +368,10 @@ function Operatore() {
       try {
         if (!r.tipo_corso_id) throw new Error(`${r.cognome}: scegli il tipo di corso`);
         if (!r.data_corso) throw new Error(`${r.cognome}: manca la data del corso`);
+        const cf = pulisciCF(r.codice_fiscale);
+        if (!cf || cf.length > 16) throw new Error(`${r.cognome}: codice fiscale non valido (${cf.length} caratteri, ne servono 16): correggilo con la matita`);
         const dip = await upsertDipendente({
-          codice_fiscale: r.codice_fiscale, cognome: r.cognome, nome: r.nome, email: r.email || null,
+          codice_fiscale: cf, cognome: r.cognome, nome: r.nome, email: r.email || null,
           reparto: r.reparto || null, sottoreparto: null, classe_concorso: null, materia: null,
           luogo_nascita: r.luogo_nascita || null, data_nascita: r.data_nascita || null,
         });
@@ -524,7 +541,7 @@ function Operatore() {
             <div className="grid grid-cols-2 gap-2">
               <Campo label="Cognome"><Input value={form.cognome} onChange={(e) => set("cognome", e.target.value.toUpperCase())} /></Campo>
               <Campo label="Nome"><Input value={form.nome} onChange={(e) => set("nome", e.target.value.toUpperCase())} /></Campo>
-              <Campo label="Codice fiscale"><Input value={form.codice_fiscale} onChange={(e) => set("codice_fiscale", e.target.value.toUpperCase())} /></Campo>
+              <Campo label="Codice fiscale"><Input value={form.codice_fiscale} onChange={(e) => set("codice_fiscale", pulisciCF(e.target.value))} /></Campo>
               <Campo label="Email"><Input type="email" value={form.email} onChange={(e) => set("email", e.target.value)} /></Campo>
               <Campo label="Data di nascita"><Input type="date" value={form.data_nascita} onChange={(e) => set("data_nascita", e.target.value)} /></Campo>
               <Campo label="Luogo di nascita"><Input value={form.luogo_nascita} onChange={(e) => set("luogo_nascita", e.target.value)} /></Campo>
@@ -626,7 +643,7 @@ function Operatore() {
                 {coda.map((r) => (
                   <tr key={r.id} className="border-t">
                     <td className="p-2"><Checkbox checked={selezionati.has(r.id)} onCheckedChange={() => toggle(r.id)} /></td>
-                    <td className="p-2"><div className="font-medium">{r.cognome} {r.nome}</div><div className="font-mono text-xs text-muted-foreground">{r.codice_fiscale}</div></td>
+                    <td className="p-2"><div className="font-medium">{r.cognome} {r.nome}</div><div className="font-mono text-xs text-muted-foreground">{pulisciCF(r.codice_fiscale)}</div></td>
                     <td className="p-2">{r.tipo_corso_nome || <span className="text-destructive">da scegliere</span>}<div className="text-xs text-muted-foreground">{r.ore ?? "?"} ore</div></td>
                     <td className="p-2">{formatData(r.data_corso)}</td>
                     <td className="p-2"><span className={`rounded-full border px-2 py-0.5 text-xs ${esitoClass(r.esito)}`}>{r.esito}</span>{r.integrazione && r.esito === "Valido con integrazione DVR" && <div className="mt-1 text-xs text-muted-foreground">{r.integrazione}</div>}{r.esito === "Valido con note" && r.note && <div className="mt-1 max-w-[240px] truncate text-xs text-muted-foreground" title={r.note}>{r.note}</div>}</td>
