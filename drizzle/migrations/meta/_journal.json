@@ -15,6 +15,13 @@
       "when": 1791963715650,
       "tag": "0001_note_valutazione",
       "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "7",
+      "when": 1791965182343,
+      "tag": "0002_codice_ateco",
+      "breakpoints": true
     }
   ]
 }

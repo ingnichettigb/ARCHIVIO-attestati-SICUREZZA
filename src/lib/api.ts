@@ -22,6 +22,8 @@ export type Dipendente = {
   materia: string | null;
   luogo_nascita: string | null;
   data_nascita: string | null;
+  /** Codici ATECO letti dall'attestato (testo libero, anche più codici). */
+  codice_ateco?: string | null;
 };
 
 export type TipoCorso = {

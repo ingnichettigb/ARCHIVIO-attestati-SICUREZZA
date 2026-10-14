@@ -6,6 +6,7 @@ export type DatiEstratti = {
   codice_fiscale: string;
   data_nascita: string;
   luogo_nascita: string;
+  codice_ateco: string;
   tipo_corso: string;
   data_corso: string;
   ore: number | null;
@@ -24,6 +25,7 @@ const SCHEMA = {
     codice_fiscale: { type: "string" },
     data_nascita: { type: "string", description: "AAAA-MM-GG o vuoto" },
     luogo_nascita: { type: "string" },
+    codice_ateco: { type: "string", description: "Codice/i ATECO presenti sull'attestato (es. 85.31.20), separati da virgola, o vuoto" },
     tipo_corso: { type: "string", description: "Uno dei tipi di corso forniti, oppure il titolo letto" },
     data_corso: { type: "string", description: "Data di fine corso/rilascio AAAA-MM-GG o vuoto" },
     ore: { type: ["number", "null"] },
@@ -33,7 +35,7 @@ const SCHEMA = {
     motivazione: { type: "string" },
   },
   required: [
-    "cognome", "nome", "codice_fiscale", "data_nascita", "luogo_nascita", "tipo_corso",
+    "cognome", "nome", "codice_fiscale", "data_nascita", "luogo_nascita", "codice_ateco", "tipo_corso",
     "data_corso", "ore", "ente", "argomenti", "valutazione", "motivazione",
   ],
 };

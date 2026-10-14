@@ -158,6 +158,7 @@ export type Database = {
           archiviato: boolean
           argomenti: string[]
           argomenti_mancanti: string[]
+          codice_ateco: string | null
           codice_fiscale: string | null
           cognome: string | null
           created_at: string
@@ -185,6 +186,7 @@ export type Database = {
           archiviato?: boolean
           argomenti?: string[]
           argomenti_mancanti?: string[]
+          codice_ateco?: string | null
           codice_fiscale?: string | null
           cognome?: string | null
           created_at?: string
@@ -212,6 +214,7 @@ export type Database = {
           archiviato?: boolean
           argomenti?: string[]
           argomenti_mancanti?: string[]
+          codice_ateco?: string | null
           codice_fiscale?: string | null
           cognome?: string | null
           created_at?: string
@@ -240,6 +243,7 @@ export type Database = {
       dipendenti: {
         Row: {
           classe_concorso: string | null
+          codice_ateco: string | null
           codice_fiscale: string
           cognome: string
           created_at: string
@@ -255,6 +259,7 @@ export type Database = {
         }
         Insert: {
           classe_concorso?: string | null
+          codice_ateco?: string | null
           codice_fiscale: string
           cognome: string
           created_at?: string
@@ -270,6 +275,7 @@ export type Database = {
         }
         Update: {
           classe_concorso?: string | null
+          codice_ateco?: string | null
           codice_fiscale?: string
           cognome?: string
           created_at?: string

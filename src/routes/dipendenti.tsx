@@ -66,6 +66,7 @@ const VUOTO: Omit<Dipendente, "id"> = {
   materia: "",
   luogo_nascita: "",
   data_nascita: "",
+  codice_ateco: "",
 };
 
 function DipendentiPage() {
@@ -319,6 +320,11 @@ function DipendentiPage() {
                   />
                 )}
                 <Campo
+                  label="Codice ATECO"
+                  value={form.codice_ateco ?? ""}
+                  onChange={(v) => setForm({ ...form, codice_ateco: v })}
+                />
+                <Campo
                   label="Luogo di nascita"
                   value={form.luogo_nascita ?? ""}
                   onChange={(v) => setForm({ ...form, luogo_nascita: v })}
@@ -352,6 +358,7 @@ function DipendentiPage() {
                 <p className="text-sm text-muted-foreground">
                   Nato/a a {corrente.luogo_nascita || "—"} il {formatData(corrente.data_nascita)} ·{" "}
                   {corrente.email || "email non presente"}
+                  {corrente.codice_ateco ? ` · ATECO ${corrente.codice_ateco}` : ""}
                 </p>
               </div>
 
