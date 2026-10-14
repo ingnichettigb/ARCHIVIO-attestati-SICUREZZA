@@ -362,6 +362,24 @@ export type Database = {
         }
         Relationships: []
       }
+      note_valutazione: {
+        Row: {
+          created_at: string
+          id: string
+          testo: string
+        }
+        Insert: {
+          created_at?: string
+          id?: string
+          testo: string
+        }
+        Update: {
+          created_at?: string
+          id?: string
+          testo?: string
+        }
+        Relationships: []
+      }
       opzioni_integrazione: {
         Row: {
           created_at: string

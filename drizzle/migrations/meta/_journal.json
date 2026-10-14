@@ -8,6 +8,13 @@
       "when": 1789311518826,
       "tag": "0000_create_documenti_attestati",
       "breakpoints": true
+    },
+    {
+      "idx": 1,
+      "version": "7",
+      "when": 1791963715650,
+      "tag": "0001_note_valutazione",
+      "breakpoints": true
     }
   ]
 }
