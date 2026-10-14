@@ -2,7 +2,12 @@
  * File:      operatore.tsx
  * Percorso:  src/routes/operatore.tsx
  * Data:      14/10/2026
- * Modifica:  03
+ * Modifica:  04
+ *
+ * Modifica 04:
+ *  - Anteprima: l'icona "Ruota di 90°" è ora un pulsante piccolo in alto a destra SOPRA il
+ *    documento (copre le icone poco usate della barra del PDF, a destra dello zoom).
+ *    Il PDF si apre adattato alla larghezza del riquadro (zoom ridotto, pagina intera visibile).
  *
  * Modifica 03:
  *  - Sezione "3. Valutazione": nuovo esito "Valido con note". Si sceglie la nota da un elenco:
@@ -464,13 +469,7 @@ function Operatore() {
               <>
                 <div className="mb-2 flex items-center justify-between gap-2">
                   <span className="truncate text-sm text-muted-foreground">{file?.name ?? form.nome_file}</span>
-                  <div className="flex shrink-0 items-center gap-2">
-                    <Button size="sm" variant="outline" disabled={ruotando} onClick={ruota} title="Ruota di 90° (clicca ancora per continuare)" aria-label="Ruota di 90°">
-                      {ruotando ? <Loader2 className="h-4 w-4 animate-spin" /> : <RotateCw className="h-4 w-4" />}
-                      {rotazione ? <span className="text-xs">{rotazione}°</span> : null}
-                    </Button>
-                    <Button size="sm" variant="outline" onClick={() => inputRef.current?.click()}><Upload className="h-4 w-4" /> Altro documento</Button>
-                  </div>
+                  <Button size="sm" variant="outline" className="shrink-0" onClick={() => inputRef.current?.click()}><Upload className="h-4 w-4" /> Altro documento</Button>
                 </div>
                 {file && totPagine > 1 && (
                   <div className="mb-2 space-y-2 rounded-lg border border-primary/40 bg-primary/5 p-2 text-sm">
@@ -491,9 +490,16 @@ function Operatore() {
                     <p className="text-xs text-muted-foreground">Verrà salvato un PDF con le sole pagine scelte. Dopo l'aggiunta alla coda il documento resta aperto per il corso successivo.</p>
                   </div>
                 )}
-                {anteprimaMime === "application/pdf"
-                  ? <object key={anteprima} data={anteprima} type="application/pdf" className="h-full min-h-[500px] w-full flex-1 rounded-md border" />
-                  : <img src={anteprima} alt="Attestato" className="max-h-[640px] w-full rounded-md border object-contain" />}
+                <div className="relative flex min-h-[500px] flex-1 flex-col">
+                  {anteprimaMime === "application/pdf"
+                    ? <object key={anteprima} data={`${anteprima}#zoom=page-width`} type="application/pdf" className="h-full min-h-[500px] w-full flex-1 rounded-md border" />
+                    : <img src={anteprima} alt="Attestato" className="max-h-[640px] w-full rounded-md border object-contain" />}
+                  <Button size="icon" variant="outline" disabled={ruotando} onClick={ruota}
+                    title={`Ruota di 90° (clicca ancora per continuare)${rotazione ? ` — ora ${rotazione}°` : ""}`} aria-label="Ruota di 90°"
+                    className="absolute right-2 top-1.5 z-10 h-8 w-8 bg-background shadow-md [&_svg]:h-4 [&_svg]:w-4">
+                    {ruotando ? <Loader2 className="animate-spin" /> : <RotateCw />}
+                  </Button>
+                </div>
               </>
             ) : (
               <button type="button" onClick={() => inputRef.current?.click()}
