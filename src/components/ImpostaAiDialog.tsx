@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { toast } from "sonner";
-import { AlertTriangle, CheckCircle2, ExternalLink, Eye, EyeOff, Key, Loader2, Plus, RotateCcw, Sparkles, Trash2, Zap } from "lucide-react";
+import { AlertTriangle, CheckCircle2, ExternalLink, Eye, EyeOff, HelpCircle, Key, Loader2, Plus, RotateCcw, Sparkles, Trash2, Zap } from "lucide-react";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -8,6 +8,42 @@ import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
 import { getActiveProvider, resetAiConfig, useAiConfig, type AIProvider } from "@/lib/ai-providers";
 import { testaFornitoreAi } from "@/lib/ai-test.functions";
+
+interface TemplateAiRapido {
+  etichetta: string;
+  nome: string;
+  baseUrl: string;
+  model: string;
+  keyUrl: string;
+  suggerimentoChiave: string;
+}
+
+const TEMPLATE_RAPIDI: TemplateAiRapido[] = [
+  {
+    etichetta: "⚡ Groq Vision (Gratis/Veloce)",
+    nome: "Groq – Llama 3.2 Vision",
+    baseUrl: "https://api.groq.com/openai/v1",
+    model: "llama-3.2-11b-vision-preview",
+    keyUrl: "https://console.groq.com/keys",
+    suggerimentoChiave: "gsk_...",
+  },
+  {
+    etichetta: "🌪️ Mistral Pixtral (Visione)",
+    nome: "Mistral – Pixtral 12B",
+    baseUrl: "https://api.mistral.ai/v1",
+    model: "pixtral-12b-2409",
+    keyUrl: "https://console.mistral.ai/api-keys/",
+    suggerimentoChiave: "chiave Mistral",
+  },
+  {
+    etichetta: "🌐 OpenRouter Free Vision",
+    nome: "OpenRouter – Llama 3.2 Vision Free",
+    baseUrl: "https://openrouter.ai/api/v1",
+    model: "meta-llama/llama-3.2-11b-vision-instruct:free",
+    keyUrl: "https://openrouter.ai/keys",
+    suggerimentoChiave: "sk-or-...",
+  },
+];
 
 /** Bottone "AI: …" + finestra per scegliere, aggiungere e gestire i fornitori AI. */
 export function ImpostaAiButton() {
@@ -24,6 +60,7 @@ export function ImpostaAiButton() {
   const [nuovaBaseUrl, setNuovaBaseUrl] = useState("https://api.groq.com/openai/v1");
   const [nuovoModello, setNuovoModello] = useState("");
   const [nuovaChiave, setNuovaChiave] = useState("");
+  const [linkChiaveAttuale, setLinkChiaveAttuale] = useState<string | null>("https://console.groq.com/keys");
   const [mostraNuovaChiave, setMostraNuovaChiave] = useState(false);
 
   const attivo = getActiveProvider(config);
@@ -42,6 +79,14 @@ export function ImpostaAiButton() {
     });
     toast.success(k ? "Chiave salvata in questo browser e AI attivata" : "Chiave rimossa");
     setEdit(null);
+  }
+
+  function applicaTemplate(t: TemplateAiRapido) {
+    setNuovoNome(t.nome);
+    setNuovaBaseUrl(t.baseUrl);
+    setNuovoModello(t.model);
+    setLinkChiaveAttuale(t.keyUrl);
+    toast.info(`Precompilati dati per ${t.etichetta}`);
   }
 
   function aggiungiNuovaAi() {
@@ -65,6 +110,7 @@ export function ImpostaAiButton() {
       note: "Fornitore personalizzato salvato in questo browser.",
       supportaVisione: true,
       isCustom: true,
+      keyUrl: linkChiaveAttuale ?? undefined,
     };
 
     setConfig({
@@ -122,7 +168,7 @@ export function ImpostaAiButton() {
             </DialogDescription>
           </DialogHeader>
           <div className="flex flex-wrap items-center justify-between gap-2 border-b pb-3">
-            <Button size="sm" onClick={() => setOpenNuova(true)} className="gap-1.5">
+            <Button size="sm" onClick={() => { applicaTemplate(TEMPLATE_RAPIDI[0]); setOpenNuova(true); }} className="gap-1.5">
               <Plus className="size-4" /> Aggiungi nuova AI
             </Button>
             <Button variant="ghost" size="sm" onClick={() => { if (confirm("Ripristinare l'elenco iniziale? Le AI personalizzate e le chiavi inserite verranno cancellate.")) { resetAiConfig(); toast.info("Elenco ripristinato"); } }}>
@@ -174,7 +220,7 @@ export function ImpostaAiButton() {
         </DialogContent>
       </Dialog>
 
-      {/* Modale Inserimento/Modifica Chiave */}
+      {/* Modale Inserimento/Modifica Chiave per fornitore esistente */}
       <Dialog open={Boolean(edit)} onOpenChange={(o) => !o && setEdit(null)}>
         <DialogContent className="sm:max-w-md">
           <DialogHeader>
@@ -205,41 +251,71 @@ export function ImpostaAiButton() {
         </DialogContent>
       </Dialog>
 
-      {/* Modale Aggiungi Nuova AI */}
+      {/* Modale Aggiungi Nuova AI con Aiuto alla Compilazione */}
       <Dialog open={openNuova} onOpenChange={setOpenNuova}>
-        <DialogContent className="sm:max-w-md">
+        <DialogContent className="max-h-[92vh] overflow-y-auto sm:max-w-lg">
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2"><Plus className="size-5 text-primary" /> Aggiungi nuova AI</DialogTitle>
             <DialogDescription>
-              Inserisci un qualsiasi fornitore compatibile OpenAI (Groq, DeepSeek, Mistral, locale, ecc.).
+              Scegli una precompilazione rapida o inserisci manualmente i dati.
             </DialogDescription>
           </DialogHeader>
-          <div className="space-y-3 py-2">
-            <div className="space-y-1.5">
-              <Label htmlFor="nuovo-nome">Nome visualizzato *</Label>
-              <Input id="nuovo-nome" value={nuovoNome} onChange={(e) => setNuovoNome(e.target.value)} placeholder="es. Groq Vision, DeepSeek, Mia AI" />
+
+          {/* Sezione AIUTO / PRECOMPILAZIONE RAPIDA */}
+          <div className="rounded-lg border bg-muted/40 p-3 space-y-2 text-xs">
+            <div className="flex items-center gap-1.5 font-medium text-foreground">
+              <HelpCircle className="size-4 text-primary" />
+              <span>Precompila in 1 clic:</span>
             </div>
-            <div className="space-y-1.5">
+            <div className="flex flex-wrap gap-1.5">
+              {TEMPLATE_RAPIDI.map((t) => (
+                <Button key={t.nome} type="button" variant="outline" size="sm" className="h-7 text-xs bg-background" onClick={() => applicaTemplate(t)}>
+                  {t.etichetta}
+                </Button>
+              ))}
+            </div>
+            <p className="text-[11px] text-muted-foreground pt-1">
+              💡 <strong>Importante:</strong> il modello scelto deve avere il supporto <em>Vision</em> per leggere testo e date dagli attestati.
+            </p>
+          </div>
+
+          <div className="space-y-3 py-1">
+            <div className="space-y-1">
+              <Label htmlFor="nuovo-nome">Nome visualizzato *</Label>
+              <Input id="nuovo-nome" value={nuovoNome} onChange={(e) => setNuovoNome(e.target.value)} placeholder="es. Groq – Llama 3.2 Vision" />
+            </div>
+
+            <div className="space-y-1">
               <Label htmlFor="nuova-url">Base URL API *</Label>
               <Input id="nuova-url" value={nuovaBaseUrl} onChange={(e) => setNuovaBaseUrl(e.target.value)} placeholder="https://api.groq.com/openai/v1" />
-              <p className="text-[11px] text-muted-foreground">L'indirizzo compatibile OpenAI (termina tipicamente con /v1)</p>
+              <p className="text-[11px] text-muted-foreground">L'indirizzo compatibile OpenAI (termina tipicamente con <code>/v1</code> o <code>/openai/v1</code>)</p>
             </div>
-            <div className="space-y-1.5">
-              <Label htmlFor="nuovo-modello">Nome Modello *</Label>
+
+            <div className="space-y-1">
+              <Label htmlFor="nuovo-modello">Nome Modello esatto *</Label>
               <Input id="nuovo-modello" value={nuovoModello} onChange={(e) => setNuovoModello(e.target.value)} placeholder="es. llama-3.2-11b-vision-preview" />
-              <p className="text-[11px] text-muted-foreground">Deve supportare la visione per poter analizzare gli attestati</p>
+              <p className="text-[11px] text-muted-foreground">Il codice esatto del modello con visione (es. <code>pixtral-12b-2409</code>, <code>llama-3.2-11b-vision-preview</code>)</p>
             </div>
-            <div className="space-y-1.5">
-              <Label htmlFor="nuova-chiave">Chiave API (opzionale)</Label>
+
+            <div className="space-y-1">
+              <div className="flex items-center justify-between">
+                <Label htmlFor="nuova-chiave">Chiave API (opzionale subito)</Label>
+                {linkChiaveAttuale && (
+                  <a href={linkChiaveAttuale} target="_blank" rel="noopener noreferrer" className="flex items-center gap-1 text-[11px] font-medium text-primary hover:underline">
+                    Crea chiave gratis <ExternalLink className="size-3" />
+                  </a>
+                )}
+              </div>
               <div className="relative">
-                <Input id="nuova-chiave" type={mostraNuovaChiave ? "text" : "password"} value={nuovaChiave} onChange={(e) => setNuovaChiave(e.target.value)} placeholder="gsk_... oppure sk-..." className="pr-10" />
+                <Input id="nuova-chiave" type={mostraNuovaChiave ? "text" : "password"} value={nuovaChiave} onChange={(e) => setNuovaChiave(e.target.value)} placeholder="Incolla qui la chiave (es. gsk_...)" className="pr-10" />
                 <button type="button" onClick={() => setMostraNuovaChiave(!mostraNuovaChiave)} className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground" aria-label="Mostra o nascondi chiave">
                   {mostraNuovaChiave ? <EyeOff className="size-4" /> : <Eye className="size-4" />}
                 </button>
               </div>
             </div>
           </div>
-          <div className="flex justify-end gap-2">
+
+          <div className="flex justify-end gap-2 pt-2">
             <Button variant="ghost" onClick={() => setOpenNuova(false)}>Annulla</Button>
             <Button onClick={aggiungiNuovaAi}>Salva AI</Button>
           </div>
