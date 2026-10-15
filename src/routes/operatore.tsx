@@ -71,6 +71,8 @@ import {
   type TipoCorso,
 } from "@/lib/api";
 import { estraiAttestato } from "@/lib/estrazione.functions";
+import { getActiveProvider, useAiConfig } from "@/lib/ai-providers";
+import { ImpostaAiButton } from "@/components/ImpostaAiDialog";
 import { contaPagine, estraiPagine, parsePagine, piuSimile, somiglianza } from "@/lib/pdf-pagine";
 import { ruotaDocumento } from "@/lib/ruota-documento";
 import { costruisciEml, salvaFileConNome, scaricaBlob, type AllegatoEml } from "@/lib/email-eml";
@@ -167,6 +169,8 @@ const fileToBase64 = (f: Blob) =>
 
 function Operatore() {
   const qc = useQueryClient();
+  const [aiConfig] = useAiConfig();
+  const aiAttiva = getActiveProvider(aiConfig);
   const { data: tipi = [] } = useQuery({ queryKey: ["tipi-corso"], queryFn: getTipiCorso });
   const { data: argomenti = [] } = useQuery({
     queryKey: ["argomenti"],
@@ -235,7 +239,10 @@ function Operatore() {
     setLettura(true);
     try {
       const r = await estraiAttestato({
-        data: { base64: await fileToBase64(f), mime: f.type, nomeFile: f.name, tipiCorso: tipi.map((t) => t.nome_corso), argomenti },
+        data: {
+          base64: await fileToBase64(f), mime: f.type, nomeFile: f.name, tipiCorso: tipi.map((t) => t.nome_corso), argomenti,
+          aiConfig: { kind: aiAttiva.kind, baseUrl: aiAttiva.baseUrl, model: aiAttiva.model, apiKey: aiAttiva.apiKey },
+        },
       });
       if (!r.ok) return void toast.error(r.errore);
       const d = r.dati;
@@ -467,7 +474,7 @@ function Operatore() {
     const persone = [...new Set(righe.map((r) => `${r.cognome} ${r.nome}`))];
     const corpo = `Gentile ${persone.length === 1 ? persone[0] : "collega"},\n\ndi seguito l'esito della verifica degli attestati di formazione sicurezza (D.Lgs. 81/2008):\n\n${righe.map((r, i) => `${i + 1}) ${riepilogo(r)}`).join("\n\n")}\n\nCordiali saluti\nUfficio Sicurezza`;
     const oggetto = `Esito verifica attestati — ${persone.join(", ")}`;
-    const corpoHtml = `<div style="font-family:Calibri,Arial,sans-serif;font-size:11pt">Gentile ${esc(persone.length === 1 ? persone[0] : "collega")},<br><br>di seguito l'esito della verifica degli attestati di formazione sicurezza (D.Lgs. 81/2008):<br><br>${righe.map((r, i) => `${i + 1}) ${riepilogoHtml(r)}`).join("<br><br>")}<br><br>Cordiali saluti<br>Ufficio Sicurezza</div>`;
+    const corpoHtml = `<div style="font-family:Calibri,Arial,sans-serif;font-size:11pt">Gentile ${esc(persone.length === 1 ? (persone[0] ?? "collega") : "collega")},<br><br>di seguito l'esito della verifica degli attestati di formazione sicurezza (D.Lgs. 81/2008):<br><br>${righe.map((r, i) => `${i + 1}) ${riepilogoHtml(r)}`).join("<br><br>")}<br><br>Cordiali saluti<br>Ufficio Sicurezza</div>`;
     const conFile = righe.filter((r) => r.percorso_file);
 
     if (!conFile.length) {
@@ -535,6 +542,7 @@ function Operatore() {
         <div className="mx-auto flex max-w-7xl items-center gap-3 px-4 py-3">
           <Button asChild variant="ghost" size="sm"><Link to="/"><ArrowLeft className="h-4 w-4" /> Home</Link></Button>
           <h1 className="font-display text-lg font-semibold">Postazione Operatore — Verifica attestati</h1>
+          <div className="ml-auto"><ImpostaAiButton /></div>
         </div>
       </header>
 
