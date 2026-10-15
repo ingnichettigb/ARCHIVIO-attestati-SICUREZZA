@@ -27,6 +27,48 @@ export async function estraiPagine(file: Blob, indici: number[]): Promise<Blob> 
   return new Blob([bytes as BlobPart], { type: "application/pdf" });
 }
 
+/**
+ * Converte la prima pagina di un PDF in un'immagine PNG (base64 puro) nel browser.
+ * Utilizzato per i fornitori AI (come Groq o Mistral) che accettano solo immagini e non PDF nativi.
+ */
+export async function renderizzaPrimaPaginaPdf(file: Blob): Promise<{ base64: string; mime: string }> {
+  // Carica PDF.js da CDN se non già presente nel DOM
+  const w = window as unknown as { pdfjsLib?: any };
+  if (!w.pdfjsLib) {
+    await new Promise<void>((resolve, reject) => {
+      const script = document.createElement("script");
+      script.src = "https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js";
+      script.onload = () => {
+        w.pdfjsLib.GlobalWorkerOptions.workerSrc =
+          "https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js";
+        resolve();
+      };
+      script.onerror = () => reject(new Error("Impossibile caricare il convertitore PDF"));
+      document.head.appendChild(script);
+    });
+  }
+
+  const arrayBuffer = await file.arrayBuffer();
+  const loadingTask = w.pdfjsLib.getDocument({ data: arrayBuffer });
+  const pdfDoc = await loadingTask.promise;
+  const page = await pdfDoc.getPage(1);
+
+  // Scala 2.0 per garantire una perfetta leggibilità dei caratteri piccoli dell'attestato
+  const viewport = page.getViewport({ scale: 2.0 });
+  const canvas = document.createElement("canvas");
+  const ctx = canvas.getContext("2d");
+  if (!ctx) throw new Error("Errore inizializzazione canvas grafico");
+
+  canvas.width = viewport.width;
+  canvas.height = viewport.height;
+
+  await page.render({ canvasContext: ctx, viewport }).promise;
+
+  const dataUrl = canvas.toDataURL("image/png");
+  const base64 = dataUrl.split(",")[1] ?? "";
+  return { base64, mime: "image/png" };
+}
+
 const norm = (s: string) =>
   s.toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "").replace(/[^a-z0-9/ ]/g, " ");
 const STOP = new Set(["di", "per", "il", "la", "e", "del", "dei", "al", "ai", "corso", "formazione", "modulo", "d", "lgs", "art", "ex", "81", "08", "2008"]);
