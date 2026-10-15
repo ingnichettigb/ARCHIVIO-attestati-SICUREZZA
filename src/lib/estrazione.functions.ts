@@ -44,6 +44,72 @@ const SCHEMA = {
   ],
 };
 
+function costruisciPrompt(tipiCorso: string[], argomenti: string[]) {
+  return `Sei un esperto di formazione sicurezza (D.Lgs. 81/2008, Accordo Stato-Regioni). Leggi l'attestato ed estrai i dati.
+Tipi di corso disponibili (scegli il più adatto, testo identico): ${tipiCorso.join(" | ")}
+Argomenti noti (riusa questi nomi quando corrispondono, aggiungine altri se presenti): ${argomenti.join(" | ")}
+
+REGOLE CRITICHE SULLA DATA DEL CORSO:
+- Estrai la data in cui il corso è stato completato o l'attestato rilasciato dall'ente formatore, così come è stampata sul documento.
+- Non usare MAI l'anno o la data corrente di oggi se non coincide con la data stampata sull'attestato. Se la data non è leggibile, lascia la stringa vuota.
+
+Valuta: "Valido" se ore e contenuti rispettano i minimi di legge; "Valido con integrazione DVR" se riconoscibile ma servono integrazioni (es. 4 o 8 ore per rischio medio/alto); "Non valido" se ore insufficienti, mancano firme/ente o illeggibile. Motivazione breve in italiano. Campi non leggibili = stringa vuota.`;
+}
+
+/** Lettura con un fornitore compatibile OpenAI (Gemini, OpenAI, OpenRouter...) usando la chiave dell'operatore. */
+async function estraiConFornitore(
+  data: { base64: string; mime: string; tipiCorso: string[]; argomenti: string[] },
+  cfg: { baseUrl: string; model: string; apiKey: string },
+): Promise<{ ok: true; dati: DatiEstratti } | { ok: false; errore: string }> {
+  const prompt = `${costruisciPrompt(data.tipiCorso, data.argomenti)}
+
+Rispondi SOLO con un oggetto JSON (nessun testo prima o dopo) con esattamente queste chiavi: ${Object.keys(SCHEMA.properties).join(", ")}.
+Schema: ${JSON.stringify(SCHEMA.properties)}`;
+  try {
+    const res = await fetch(`${cfg.baseUrl.replace(/\/+$/, "")}/chat/completions`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json", Authorization: `Bearer ${cfg.apiKey}` },
+      body: JSON.stringify({
+        model: cfg.model,
+        response_format: { type: "json_object" },
+        messages: [{
+          role: "user",
+          content: [
+            { type: "text", text: prompt },
+            { type: "image_url", image_url: { url: `data:${data.mime};base64,${data.base64}` } },
+          ],
+        }],
+      }),
+    });
+    if (!res.ok) {
+      const t = await res.text().catch(() => "");
+      console.error("Fornitore AI", res.status, t.slice(0, 500));
+      if (res.status === 401 || res.status === 403) return { ok: false, errore: "Chiave dell'AI scelta non valida: controllala nel bottone \"AI\"." };
+      if (res.status === 429) return { ok: false, errore: "Limite gratuito dell'AI scelta superato: riprova tra poco o passa a un'altra AI." };
+      if (res.status === 404) return { ok: false, errore: `Modello "${cfg.model}" non disponibile su questo fornitore.` };
+      if (res.status === 400 && data.mime === "application/pdf") return { ok: false, errore: "Questa AI non accetta PDF: usa Google Gemini oppure carica una foto." };
+      return { ok: false, errore: `Errore dell'AI scelta (${res.status}).` };
+    }
+    const json = (await res.json()) as { choices?: { message?: { content?: string } }[] };
+    let testo = json.choices?.[0]?.message?.content ?? "";
+    testo = testo.replace(/^```(?:json)?\s*/i, "").replace(/```\s*$/, "").trim();
+    const d = JSON.parse(testo) as Partial<DatiEstratti>;
+    const s = (v: unknown) => (typeof v === "string" ? v : "");
+    const val = ["Valido", "Valido con integrazione DVR", "Non valido"].includes(s(d.valutazione)) ? (d.valutazione as DatiEstratti["valutazione"]) : "Non valido";
+    return {
+      ok: true,
+      dati: {
+        cognome: s(d.cognome), nome: s(d.nome), codice_fiscale: s(d.codice_fiscale), data_nascita: s(d.data_nascita),
+        luogo_nascita: s(d.luogo_nascita), codice_ateco: s(d.codice_ateco), tipo_corso: s(d.tipo_corso), data_corso: s(d.data_corso),
+        ore: typeof d.ore === "number" ? d.ore : d.ore ? Number(d.ore) || null : null, ente: s(d.ente),
+        argomenti: Array.isArray(d.argomenti) ? d.argomenti.map(String) : [], valutazione: val, motivazione: s(d.motivazione),
+      },
+    };
+  } catch (e) {
+    return { ok: false, errore: `Documento non leggibile con l'AI scelta: ${(e as Error).message}` };
+  }
+}
+
 export const estraiAttestato = createServerFn({ method: "POST" })
   .inputValidator(
     (d: {
@@ -62,15 +128,7 @@ export const estraiAttestato = createServerFn({ method: "POST" })
     const media = isPdf
       ? { type: "input_file", filename: data.nomeFile || "attestato.pdf", file_data: `data:application/pdf;base64,${data.base64}` }
       : { type: "input_image", image_url: `data:${data.mime};base64,${data.base64}` };
-    const prompt = `Sei un esperto di formazione sicurezza (D.Lgs. 81/2008, Accordo Stato-Regioni). Leggi l'attestato ed estrai i dati.
-Tipi di corso disponibili (scegli il più adatto, testo identico): ${data.tipiCorso.join(" | ")}
-Argomenti noti (riusa questi nomi quando corrispondono, aggiungine altri se presenti): ${data.argomenti.join(" | ")}
-
-REGOLE CRITICHE SULLA DATA DEL CORSO:
-- Estrai la data in cui il corso è stato completato o l'attestato rilasciato dall'ente formatore, così come è stampata sul documento.
-- Non usare MAI l'anno o la data corrente di oggi se non coincide con la data stampata sull'attestato. Se la data non è leggibile, lascia la stringa vuota.
-
-Valuta: "Valido" se ore e contenuti rispettano i minimi di legge; "Valido con integrazione DVR" se riconoscibile ma servono integrazioni (es. 4 o 8 ore per rischio medio/alto); "Non valido" se ore insufficienti, mancano firme/ente o illeggibile. Motivazione breve in italiano. Campi non leggibili = stringa vuota.`;
+    const prompt = costruisciPrompt(data.tipiCorso, data.argomenti);
     const res = await fetch("https://ai.gateway.lovable.dev/v1/responses", {
       method: "POST",
       headers: { "Content-Type": "application/json", "Lovable-API-Key": key, "X-Lovable-AIG-SDK": "fetch" },
