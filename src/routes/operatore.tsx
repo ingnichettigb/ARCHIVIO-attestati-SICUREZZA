@@ -474,7 +474,7 @@ function Operatore() {
     const persone = [...new Set(righe.map((r) => `${r.cognome} ${r.nome}`))];
     const corpo = `Gentile ${persone.length === 1 ? persone[0] : "collega"},\n\ndi seguito l'esito della verifica degli attestati di formazione sicurezza (D.Lgs. 81/2008):\n\n${righe.map((r, i) => `${i + 1}) ${riepilogo(r)}`).join("\n\n")}\n\nCordiali saluti\nUfficio Sicurezza`;
     const oggetto = `Esito verifica attestati — ${persone.join(", ")}`;
-    const corpoHtml = `<div style="font-family:Calibri,Arial,sans-serif;font-size:11pt">Gentile ${esc(persone.length === 1 ? persone[0] : "collega")},<br><br>di seguito l'esito della verifica degli attestati di formazione sicurezza (D.Lgs. 81/2008):<br><br>${righe.map((r, i) => `${i + 1}) ${riepilogoHtml(r)}`).join("<br><br>")}<br><br>Cordiali saluti<br>Ufficio Sicurezza</div>`;
+    const corpoHtml = `<div style="font-family:Calibri,Arial,sans-serif;font-size:11pt">Gentile ${esc(persone.length === 1 ? (persone[0] ?? "collega") : "collega")},<br><br>di seguito l'esito della verifica degli attestati di formazione sicurezza (D.Lgs. 81/2008):<br><br>${righe.map((r, i) => `${i + 1}) ${riepilogoHtml(r)}`).join("<br><br>")}<br><br>Cordiali saluti<br>Ufficio Sicurezza</div>`;
     const conFile = righe.filter((r) => r.percorso_file);
 
     if (!conFile.length) {
