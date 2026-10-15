@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { toast } from "sonner";
-import { AlertTriangle, CheckCircle2, ExternalLink, Eye, EyeOff, Key, Loader2, RotateCcw, Sparkles, Zap } from "lucide-react";
+import { AlertTriangle, CheckCircle2, ExternalLink, Eye, EyeOff, Key, Loader2, Plus, RotateCcw, Sparkles, Trash2, Zap } from "lucide-react";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -9,7 +9,7 @@ import { Badge } from "@/components/ui/badge";
 import { getActiveProvider, resetAiConfig, useAiConfig, type AIProvider } from "@/lib/ai-providers";
 import { testaFornitoreAi } from "@/lib/ai-test.functions";
 
-/** Bottone "AI: …" + finestra per scegliere il fornitore AI e inserire le chiavi (salvate solo nel browser). */
+/** Bottone "AI: …" + finestra per scegliere, aggiungere e gestire i fornitori AI. */
 export function ImpostaAiButton() {
   const [config, setConfig] = useAiConfig();
   const [open, setOpen] = useState(false);
@@ -17,6 +17,15 @@ export function ImpostaAiButton() {
   const [chiave, setChiave] = useState("");
   const [mostra, setMostra] = useState(false);
   const [testando, setTestando] = useState<string | null>(null);
+
+  // Stato per il dialog "Aggiungi nuova AI"
+  const [openNuova, setOpenNuova] = useState(false);
+  const [nuovoNome, setNuovoNome] = useState("");
+  const [nuovaBaseUrl, setNuovaBaseUrl] = useState("https://api.groq.com/openai/v1");
+  const [nuovoModello, setNuovoModello] = useState("");
+  const [nuovaChiave, setNuovaChiave] = useState("");
+  const [mostraNuovaChiave, setMostraNuovaChiave] = useState(false);
+
   const attivo = getActiveProvider(config);
 
   function attiva(id: string) {
@@ -33,6 +42,56 @@ export function ImpostaAiButton() {
     });
     toast.success(k ? "Chiave salvata in questo browser e AI attivata" : "Chiave rimossa");
     setEdit(null);
+  }
+
+  function aggiungiNuovaAi() {
+    const nome = nuovoNome.trim();
+    const url = nuovaBaseUrl.trim().replace(/\/+$/, "");
+    const mod = nuovoModello.trim();
+    const k = nuovaChiave.trim();
+
+    if (!nome) return void toast.error("Inserisci un nome per l'AI");
+    if (!url) return void toast.error("Inserisci l'indirizzo Base URL");
+    if (!mod) return void toast.error("Inserisci il nome del modello");
+
+    const id = `custom-${Date.now()}`;
+    const nuova: AIProvider = {
+      id,
+      name: nome,
+      kind: "openai",
+      baseUrl: url,
+      model: mod,
+      apiKey: k,
+      note: "Fornitore personalizzato salvato in questo browser.",
+      supportaVisione: true,
+      isCustom: true,
+    };
+
+    setConfig({
+      providers: [...config.providers, nuova],
+      activeId: k ? id : config.activeId,
+    });
+
+    toast.success(`AI "${nome}" aggiunta con successo`);
+    setNuovoNome("");
+    setNuovoModello("");
+    setNuovaChiave("");
+    setOpenNuova(false);
+  }
+
+  function eliminaProvider(p: AIProvider) {
+    if (!p.isCustom) return;
+    if (!confirm(`Vuoi davvero eliminare l'AI "${p.name}"?`)) return;
+
+    const nuoviProviders = config.providers.filter((item) => item.id !== p.id);
+    const nuovoActiveId = config.activeId === p.id ? "lovable-default" : config.activeId;
+
+    setConfig({
+      providers: nuoviProviders,
+      activeId: nuovoActiveId,
+    });
+
+    toast.info(`AI "${p.name}" eliminata`);
   }
 
   async function testa(p: AIProvider) {
@@ -62,12 +121,15 @@ export function ImpostaAiButton() {
               Scegli chi legge gli attestati. Le chiavi restano solo in questo browser, non nel database.
             </DialogDescription>
           </DialogHeader>
-          <div className="flex justify-end">
-            <Button variant="ghost" size="sm" onClick={() => { if (confirm("Ripristinare l'elenco iniziale? Le chiavi inserite verranno cancellate.")) { resetAiConfig(); toast.info("Elenco ripristinato"); } }}>
+          <div className="flex flex-wrap items-center justify-between gap-2 border-b pb-3">
+            <Button size="sm" onClick={() => setOpenNuova(true)} className="gap-1.5">
+              <Plus className="size-4" /> Aggiungi nuova AI
+            </Button>
+            <Button variant="ghost" size="sm" onClick={() => { if (confirm("Ripristinare l'elenco iniziale? Le AI personalizzate e le chiavi inserite verranno cancellate.")) { resetAiConfig(); toast.info("Elenco ripristinato"); } }}>
               <RotateCcw className="size-3.5" /> Elenco iniziale
             </Button>
           </div>
-          <div className="space-y-3">
+          <div className="space-y-3 pt-1">
             {config.providers.map((p) => {
               const isActive = p.id === config.activeId;
               const hasKey = p.kind === "default" || Boolean(p.apiKey.trim());
@@ -77,6 +139,7 @@ export function ImpostaAiButton() {
                     <div className="space-y-1">
                       <div className="flex flex-wrap items-center gap-2">
                         <span className="font-semibold">{p.name}</span>
+                        {p.isCustom && <Badge variant="secondary" className="text-[10px]">Personalizzata</Badge>}
                         {isActive ? <Badge>In uso</Badge> : (
                           <Button variant="outline" size="sm" className="h-6 px-2 text-xs" onClick={() => attiva(p.id)} disabled={!hasKey}>Usa questa</Button>
                         )}
@@ -87,7 +150,7 @@ export function ImpostaAiButton() {
                       <p className="text-xs text-muted-foreground">{p.note}</p>
                       <p className="text-[11px] text-muted-foreground">Modello: <code className="rounded bg-muted px-1">{p.model}</code></p>
                     </div>
-                    <div className="flex shrink-0 gap-2">
+                    <div className="flex shrink-0 items-center gap-2">
                       {p.kind !== "default" && (
                         <Button variant="outline" size="sm" onClick={() => { setEdit(p); setChiave(p.apiKey); setMostra(false); }}>
                           <Key className="size-3.5" /> Chiave
@@ -97,6 +160,11 @@ export function ImpostaAiButton() {
                         {testando === p.id ? <Loader2 className="size-3.5 animate-spin" /> : <Zap className="size-3.5" />}
                         {testando === p.id ? "Provo..." : "Testa"}
                       </Button>
+                      {p.isCustom && (
+                        <Button variant="ghost" size="icon" className="size-8 text-destructive hover:bg-destructive/10 hover:text-destructive" onClick={() => eliminaProvider(p)} title="Elimina questa AI">
+                          <Trash2 className="size-4" />
+                        </Button>
+                      )}
                     </div>
                   </div>
                 </div>
@@ -106,6 +174,7 @@ export function ImpostaAiButton() {
         </DialogContent>
       </Dialog>
 
+      {/* Modale Inserimento/Modifica Chiave */}
       <Dialog open={Boolean(edit)} onOpenChange={(o) => !o && setEdit(null)}>
         <DialogContent className="sm:max-w-md">
           <DialogHeader>
@@ -132,6 +201,47 @@ export function ImpostaAiButton() {
           <div className="flex justify-end gap-2">
             <Button variant="ghost" onClick={() => setEdit(null)}>Annulla</Button>
             <Button onClick={salvaChiave}>Salva e attiva</Button>
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      {/* Modale Aggiungi Nuova AI */}
+      <Dialog open={openNuova} onOpenChange={setOpenNuova}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2"><Plus className="size-5 text-primary" /> Aggiungi nuova AI</DialogTitle>
+            <DialogDescription>
+              Inserisci un qualsiasi fornitore compatibile OpenAI (Groq, DeepSeek, Mistral, locale, ecc.).
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-3 py-2">
+            <div className="space-y-1.5">
+              <Label htmlFor="nuovo-nome">Nome visualizzato *</Label>
+              <Input id="nuovo-nome" value={nuovoNome} onChange={(e) => setNuovoNome(e.target.value)} placeholder="es. Groq Vision, DeepSeek, Mia AI" />
+            </div>
+            <div className="space-y-1.5">
+              <Label htmlFor="nuova-url">Base URL API *</Label>
+              <Input id="nuova-url" value={nuovaBaseUrl} onChange={(e) => setNuovaBaseUrl(e.target.value)} placeholder="https://api.groq.com/openai/v1" />
+              <p className="text-[11px] text-muted-foreground">L'indirizzo compatibile OpenAI (termina tipicamente con /v1)</p>
+            </div>
+            <div className="space-y-1.5">
+              <Label htmlFor="nuovo-modello">Nome Modello *</Label>
+              <Input id="nuovo-modello" value={nuovoModello} onChange={(e) => setNuovoModello(e.target.value)} placeholder="es. llama-3.2-11b-vision-preview" />
+              <p className="text-[11px] text-muted-foreground">Deve supportare la visione per poter analizzare gli attestati</p>
+            </div>
+            <div className="space-y-1.5">
+              <Label htmlFor="nuova-chiave">Chiave API (opzionale)</Label>
+              <div className="relative">
+                <Input id="nuova-chiave" type={mostraNuovaChiave ? "text" : "password"} value={nuovaChiave} onChange={(e) => setNuovaChiave(e.target.value)} placeholder="gsk_... oppure sk-..." className="pr-10" />
+                <button type="button" onClick={() => setMostraNuovaChiave(!mostraNuovaChiave)} className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground" aria-label="Mostra o nascondi chiave">
+                  {mostraNuovaChiave ? <EyeOff className="size-4" /> : <Eye className="size-4" />}
+                </button>
+              </div>
+            </div>
+          </div>
+          <div className="flex justify-end gap-2">
+            <Button variant="ghost" onClick={() => setOpenNuova(false)}>Annulla</Button>
+            <Button onClick={aggiungiNuovaAi}>Salva AI</Button>
           </div>
         </DialogContent>
       </Dialog>
