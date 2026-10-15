@@ -110,7 +110,7 @@ export function resetAiConfig() {
 }
 
 export function getActiveProvider(cfg: AIConfig): AIProvider {
-  return cfg.providers.find((p) => p.id === cfg.activeId) ?? cfg.providers[0];
+  return cfg.providers.find((p) => p.id === cfg.activeId) ?? cfg.providers[0] ?? DEFAULT_PROVIDERS[0]!;
 }
 
 /** Configurazione AI reattiva; letta dal browser dopo il primo render. */

@@ -51,7 +51,7 @@ export function ImpostaAiButton() {
       <Button variant="outline" size="sm" onClick={() => setOpen(true)} className="gap-1.5">
         <Sparkles className="size-4 text-primary" />
         <span className="hidden sm:inline">AI:</span>
-        <strong className="max-w-[160px] truncate">{attivo.name.split("–")[0].split("(")[0].trim()}</strong>
+        <strong className="max-w-[160px] truncate">{(attivo.name.split("–")[0] ?? "").split("(")[0]?.trim()}</strong>
       </Button>
 
       <Dialog open={open} onOpenChange={setOpen}>
