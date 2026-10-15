@@ -46,9 +46,16 @@ const SCHEMA = {
 
 export const estraiAttestato = createServerFn({ method: "POST" })
   .inputValidator(
-    (d: { base64: string; mime: string; nomeFile: string; tipiCorso: string[]; argomenti: string[] }) => d,
+    (d: {
+      base64: string; mime: string; nomeFile: string; tipiCorso: string[]; argomenti: string[];
+      aiConfig?: { kind: "default" | "openai"; baseUrl?: string; model?: string; apiKey?: string };
+    }) => d,
   )
   .handler(async ({ data }): Promise<{ ok: true; dati: DatiEstratti } | { ok: false; errore: string }> => {
+    const cfg = data.aiConfig;
+    if (cfg?.kind === "openai" && cfg.apiKey?.trim() && cfg.baseUrl) {
+      return estraiConFornitore(data, { baseUrl: cfg.baseUrl, model: cfg.model || "gemini-2.5-flash", apiKey: cfg.apiKey.trim() });
+    }
     const key = process.env["LOVABLE_API_KEY"];
     if (!key) return { ok: false, errore: "Chiave AI non configurata" };
     const isPdf = data.mime === "application/pdf";
@@ -78,7 +85,7 @@ Valuta: "Valido" se ore e contenuti rispettano i minimi di legge; "Valido con in
     });
     if (!res.ok || !res.body) {
       const t = await res.text().catch(() => "");
-      if (res.status === 402) return { ok: false, errore: "Crediti AI esauriti: ricarica dalle impostazioni dello spazio di lavoro." };
+      if (res.status === 402) return { ok: false, errore: "Crediti AI esauriti: scegli un'AI gratuita dal bottone \"AI\" in alto oppure ricarica dalle impostazioni dello spazio di lavoro." };
       if (res.status === 429) return { ok: false, errore: "Troppe richieste, riprova tra poco." };
       return { ok: false, errore: `Errore lettura (${res.status}) ${t.slice(0, 200)}` };
     }
