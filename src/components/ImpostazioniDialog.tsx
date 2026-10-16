@@ -14,6 +14,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Switch } from "@/components/ui/switch";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { RuoliTab } from "@/components/RuoliTab";
 import { TabellaRepartiDialog } from "@/components/TabellaRepartiDialog";
 import { TabellaTipiCorsoDialog } from "@/components/TabellaTipiCorsoDialog";
 import {
@@ -64,10 +65,11 @@ export function ImpostazioniDialog() {
           </DialogHeader>
 
           <Tabs defaultValue="reparti">
-            <TabsList className="grid w-full grid-cols-3">
+            <TabsList className="grid w-full grid-cols-4">
               <TabsTrigger value="reparti">Reparti</TabsTrigger>
               <TabsTrigger value="insegnamento">Classi e materie</TabsTrigger>
               <TabsTrigger value="categorie">Categorie corsi</TabsTrigger>
+              <TabsTrigger value="ruoli">Ruoli</TabsTrigger>
             </TabsList>
             <TabsContent value="reparti" className="mt-4">
               <RepartiTab />
@@ -77,6 +79,9 @@ export function ImpostazioniDialog() {
             </TabsContent>
             <TabsContent value="categorie" className="mt-4">
               <CategorieTab />
+            </TabsContent>
+            <TabsContent value="ruoli" className="mt-4">
+              <RuoliTab />
             </TabsContent>
           </Tabs>
         </DialogContent>
