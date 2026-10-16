@@ -19,6 +19,7 @@ import { ArrowLeft, Loader2, Plus, Search, Users } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { Checkbox } from "@/components/ui/checkbox";
 import {
   Select,
   SelectContent,
@@ -38,6 +39,10 @@ import {
   getDipendenti,
   getIntegrazioniDvr,
   getReparti,
+  getRuoliSicurezza,
+  getAssegnazioniRuoli,
+  impostaRuoloDipendente,
+  ruoliDelDipendente,
   repartoLeggibile,
   riepilogoIncarichi,
   scadenzaBadgeClass,
@@ -106,6 +111,17 @@ function DipendentiPage() {
     queryKey: ["attestati", "Tutti"],
     queryFn: () => getAttestati("Tutti"),
   });
+  const { data: ruoliCatalogo = [] } = useQuery({
+    queryKey: ["ruoli-sicurezza"],
+    queryFn: getRuoliSicurezza,
+    retry: false,
+  });
+  const { data: assegnazioni = [] } = useQuery({
+    queryKey: ["dipendenti-ruoli"],
+    queryFn: getAssegnazioniRuoli,
+    retry: false,
+  });
+  const [filtroRuolo, setFiltroRuolo] = useState(TUTTI);
   const { data: integrazioni = [] } = useQuery({
     queryKey: ["integrazioni-dvr"],
     queryFn: getIntegrazioniDvr,
@@ -138,17 +154,40 @@ function DipendentiPage() {
         (d.reparto ?? "").trim().toLowerCase() !== filtroReparto.toLowerCase()
       )
         return false;
+      if (filtroRuolo !== TUTTI) {
+        const mieiRuoli = ruoliDelDipendente(d.id, ruoliCatalogo, assegnazioni);
+        if (filtroRuolo === "__mancanti__") {
+          const suoiD = attestati.filter((a) => a.dipendente_id === d.id);
+          const manca = mieiRuoli.some(
+            (ru) => ru.macro_categoria && !suoiD.some((a) => a.tipi_corso?.macro_categoria === ru.macro_categoria),
+          );
+          if (!manca) return false;
+        } else if (!mieiRuoli.some((ru) => ru.id === filtroRuolo)) return false;
+      }
       if (!t) return true;
       return `${d.cognome} ${d.nome} ${d.codice_fiscale} ${d.reparto ?? ""}`
         .toLowerCase()
         .includes(t);
     });
-  }, [dipendenti, q, filtroReparto]);
+  }, [dipendenti, q, filtroReparto, filtroRuolo, ruoliCatalogo, assegnazioni, attestati]);
 
   const corrente = dipendenti.find((d) => d.id === sel) ?? null;
   const suoi = attestati.filter((a) => a.dipendente_id === sel);
   const suoiInteg = integrazioni.filter((i) => i.dipendente_id === sel);
   const integAperte = suoiInteg.filter((i) => i.stato === "Da completare");
+  const ruoliCorrente = sel ? ruoliDelDipendente(sel, ruoliCatalogo, assegnazioni) : [];
+  const categorieRichieste = new Set(ruoliCorrente.map((r) => r.macro_categoria).filter(Boolean));
+  const ruoliAttivi = ruoliCatalogo.filter((r) => r.attivo);
+
+  async function spuntaRuolo(ruoloId: string, v: boolean) {
+    if (!sel) return;
+    try {
+      await impostaRuoloDipendente(sel, ruoloId, v);
+      qc.invalidateQueries({ queryKey: ["dipendenti-ruoli"] });
+    } catch (e) {
+      toast.error("Modifica non riuscita", { description: (e as Error).message });
+    }
+  }
 
   async function segnaCompletata(i: IntegrazioneDvr) {
     if (!window.confirm(`Segnare come completata "${i.descrizione}" senza collegare un attestato?`)) return;
@@ -241,6 +280,20 @@ function DipendentiPage() {
                   </SelectItem>
                 ))}
                 <SelectItem value={NESSUNO}>Senza reparto</SelectItem>
+              </SelectContent>
+            </Select>
+            <Select value={filtroRuolo} onValueChange={setFiltroRuolo}>
+              <SelectTrigger className="w-[190px]">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value={TUTTI}>Tutti i ruoli</SelectItem>
+                {ruoliAttivi.map((r) => (
+                  <SelectItem key={r.id} value={r.id}>
+                    {r.nome}
+                  </SelectItem>
+                ))}
+                <SelectItem value="__mancanti__">Con corsi mancanti</SelectItem>
               </SelectContent>
             </Select>
             <Button onClick={() => setForm({ ...VUOTO })}>
@@ -420,6 +473,50 @@ function DipendentiPage() {
                 </Select>
               </div>
 
+              <div className="space-y-2 rounded-xl border border-border p-3">
+                <h3 className="text-sm font-semibold">Ruoli e incarichi assegnati</h3>
+                {ruoliAttivi.length ? (
+                  <div className="grid gap-2 sm:grid-cols-2">
+                    {ruoliAttivi.map((r) => {
+                      const spuntato =
+                        r.obbligatorio_tutti ||
+                        assegnazioni.some((a) => a.dipendente_id === corrente.id && a.ruolo_id === r.id);
+                      return (
+                        <label key={r.id} className="flex items-center gap-2 text-sm">
+                          <Checkbox
+                            checked={spuntato}
+                            disabled={r.obbligatorio_tutti}
+                            onCheckedChange={(v) => spuntaRuolo(r.id, v === true)}
+                          />
+                          {r.nome}
+                          {r.obbligatorio_tutti && (
+                            <span className="text-[10px] text-muted-foreground">(per tutti)</span>
+                          )}
+                        </label>
+                      );
+                    })}
+                  </div>
+                ) : (
+                  <p className="text-xs text-muted-foreground">
+                    Nessun ruolo: aggiungili da Impostazioni → Ruoli.
+                  </p>
+                )}
+                {ruoliCorrente
+                  .filter(
+                    (r) =>
+                      r.macro_categoria &&
+                      !suoi.some((a) => a.tipi_corso?.macro_categoria === r.macro_categoria),
+                  )
+                  .map((r) => (
+                    <p
+                      key={r.id}
+                      className="rounded-lg border border-destructive/30 bg-destructive/10 px-2 py-1 text-xs text-destructive"
+                    >
+                      Da svolgere: corso {r.macro_categoria} per il ruolo {r.nome}
+                    </p>
+                  ))}
+              </div>
+
               <div className="space-y-3">
                 <h3 className="text-sm font-semibold">Incarichi e formazione</h3>
                 {integAperte.map((i) => (
@@ -460,7 +557,11 @@ function DipendentiPage() {
                             r.peggiore,
                           )}`}
                         >
-                          {r.ricoperto ? etichettaStato(r.peggiore) : "Non incaricato"}
+                          {r.ricoperto
+                            ? etichettaStato(r.peggiore)
+                            : categorieRichieste.has(r.incarico.categoria)
+                              ? "Da svolgere"
+                              : "Non incaricato"}
                         </span>
                       </div>
                       <ul className="mt-2 space-y-1">

@@ -29,6 +29,13 @@
       "when": 1791967353651,
       "tag": "0003_integrazioni_dvr",
       "breakpoints": true
+    },
+    {
+      "idx": 4,
+      "version": "7",
+      "when": 1792177682957,
+      "tag": "0004_ruoli_sicurezza",
+      "breakpoints": true
     }
   ]
 }
