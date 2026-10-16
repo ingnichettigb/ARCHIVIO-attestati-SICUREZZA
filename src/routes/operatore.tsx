@@ -5,10 +5,10 @@
  */
 import { useEffect, useMemo, useRef, useState } from "react";
 import { createFileRoute } from "@tanstack/react-router";
-import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { createFileRoute, Link } from "@tanstack/react-router";
 import { toast } from "sonner";
 import {
-  Archive, Check, Copy, Download, Edit3, Eye, FileText, Loader2, Mail, Plus,
+  ArrowLeft, Archive, Check, Copy, Download, Edit3, Eye, FileText, Loader2, Mail, Plus,
   RotateCw, Sparkles, Trash2, X, ZoomIn, ZoomOut, RotateCcw
 } from "lucide-react";
 import { supabase as sb } from "@/integrations/supabase/client";
@@ -211,9 +211,19 @@ export function PostazioneOperatore() {
     <div className="flex flex-col gap-4 p-4 lg:p-6">
       {/* Intestazione Superiore */}
       <div className="flex flex-wrap items-center justify-between gap-3 border-b pb-4">
-        <div>
-          <h1 className="text-2xl font-bold tracking-tight">Postazione Operatore</h1>
-          <p className="text-sm text-muted-foreground">Verifica, lettura automatica con AI e archiviazione attestati</p>
+               <div className="flex items-center gap-3">
+          <Link
+            to="/"
+            className="grid size-9 place-items-center rounded-lg border border-border text-muted-foreground hover:bg-muted hover:text-foreground transition-colors"
+            title="Torna alla home"
+            aria-label="Torna alla home"
+          >
+            <ArrowLeft className="size-5" />
+          </Link>
+          <div>
+            <h1 className="text-2xl font-bold tracking-tight">Postazione Operatore</h1>
+            <p className="text-sm text-muted-foreground">Verifica, lettura automatica con AI e archiviazione attestati</p>
+          </div>
         </div>
         <div className="flex items-center gap-2">
           <ImpostaAiButton />
