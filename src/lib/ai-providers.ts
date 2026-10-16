@@ -32,24 +32,24 @@ export const DEFAULT_PROVIDERS: AIProvider[] = [
     supportaVisione: true,
   },
   {
-    id: "google-gemini-2.5-flash",
-    name: "Google AI Studio – Gemini 2.5 Flash (gratis)",
-    kind: "openai",
-    baseUrl: "https://generativelanguage.googleapis.com/v1beta/openai",
-    model: "gemini-2.5-flash",
-    apiKey: "",
-    note: "Gratuito con limiti giornalieri generosi. Legge PDF e foto.",
-    keyUrl: "https://aistudio.google.com/app/apikey",
-    supportaVisione: true,
-  },
-  {
     id: "google-gemini-2.0-flash",
     name: "Google AI Studio – Gemini 2.0 Flash (gratis)",
     kind: "openai",
     baseUrl: "https://generativelanguage.googleapis.com/v1beta/openai",
     model: "gemini-2.0-flash",
     apiKey: "",
-    note: "Alternativa veloce e gratuita, utile come riserva.",
+    note: "Consigliato: veloce, gratuito e legge PDF e foto.",
+    keyUrl: "https://aistudio.google.com/app/apikey",
+    supportaVisione: true,
+  },
+  {
+    id: "google-gemini-2.5-flash",
+    name: "Google AI Studio – Gemini 2.5 Flash",
+    kind: "openai",
+    baseUrl: "https://generativelanguage.googleapis.com/v1beta/openai",
+    model: "gemini-2.5-flash",
+    apiKey: "",
+    note: "Disponibile solo per account abilitati su Google AI Studio.",
     keyUrl: "https://aistudio.google.com/app/apikey",
     supportaVisione: true,
   },
@@ -89,7 +89,15 @@ export function loadAiConfig(): AIConfig {
     const salvati = parsed.providers ?? [];
     const merged: AIProvider[] = DEFAULT_PROVIDERS.map((def) => {
       const m = salvati.find((s) => s.id === def.id);
-      return m ? { ...def, apiKey: m.apiKey || "", model: m.model || def.model } : def;
+      return m
+        ? {
+            ...def,
+            name: m.name || def.name,
+            baseUrl: m.baseUrl || def.baseUrl,
+            apiKey: m.apiKey || "",
+            model: m.model || def.model,
+          }
+        : def;
     });
     for (const p of salvati) if (p.isCustom && !merged.some((m) => m.id === p.id)) merged.push(p);
     const activeId = parsed.activeId && merged.some((m) => m.id === parsed.activeId) ? parsed.activeId : "lovable-default";
