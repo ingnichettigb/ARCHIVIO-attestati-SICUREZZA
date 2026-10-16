@@ -291,6 +291,42 @@ export type Database = {
         }
         Relationships: []
       }
+      dipendenti_ruoli: {
+        Row: {
+          created_at: string
+          dipendente_id: string
+          id: string
+          ruolo_id: string
+        }
+        Insert: {
+          created_at?: string
+          dipendente_id: string
+          id?: string
+          ruolo_id: string
+        }
+        Update: {
+          created_at?: string
+          dipendente_id?: string
+          id?: string
+          ruolo_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "dipendenti_ruoli_dipendente_id_fkey"
+            columns: ["dipendente_id"]
+            isOneToOne: false
+            referencedRelation: "dipendenti"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "dipendenti_ruoli_ruolo_id_fkey"
+            columns: ["ruolo_id"]
+            isOneToOne: false
+            referencedRelation: "ruoli_sicurezza"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       documenti_attestati: {
         Row: {
           codice_fiscale: string
@@ -498,6 +534,39 @@ export type Database = {
           nome?: string
           ordine?: number
           richiede_classe_concorso?: boolean
+        }
+        Relationships: []
+      }
+      ruoli_sicurezza: {
+        Row: {
+          attivo: boolean
+          created_at: string
+          descrizione: string | null
+          id: string
+          macro_categoria: string | null
+          nome: string
+          obbligatorio_tutti: boolean
+          ordine: number
+        }
+        Insert: {
+          attivo?: boolean
+          created_at?: string
+          descrizione?: string | null
+          id?: string
+          macro_categoria?: string | null
+          nome: string
+          obbligatorio_tutti?: boolean
+          ordine?: number
+        }
+        Update: {
+          attivo?: boolean
+          created_at?: string
+          descrizione?: string | null
+          id?: string
+          macro_categoria?: string | null
+          nome?: string
+          obbligatorio_tutti?: boolean
+          ordine?: number
         }
         Relationships: []
       }
