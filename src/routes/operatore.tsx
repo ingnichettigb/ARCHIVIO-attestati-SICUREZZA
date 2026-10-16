@@ -21,11 +21,10 @@ import { Checkbox } from "@/components/ui/checkbox";
 import { Textarea } from "@/components/ui/textarea";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { estraiAttestato } from "@/lib/estrazione.functions";
-import { generaEmlBlob, scaricaEml } from "@/lib/email-eml";
 import { getActiveProvider, useAiConfig } from "@/lib/ai-providers";
 import { ImpostaAiButton } from "@/components/ImpostaAiDialog";
 import { contaPagine, estraiPagine, piuSimile, somiglianza, renderizzaPrimaPaginaPdf } from "@/lib/pdf-pagine";
-import { pulisciCF, calcolaScadenza } from "@/lib/api";
+import { pulisciCF } from "@/lib/api";
 
 export const Route = createFileRoute("/operatore")({
   component: PostazioneOperatore,
@@ -147,7 +146,7 @@ export function PostazioneOperatore() {
         const buf = await f.arrayBuffer();
         let bin = "";
         const bytes = new Uint8Array(buf);
-        for (let i = 0; i < bytes.byteLength; i++) bin += String.fromCharCode(bytes[i]);
+        for (let i = 0; i < bytes.byteLength; i++) bin += String.fromCharCode(bytes[i]!);
         payloadBase64 = btoa(bin);
       }
 
