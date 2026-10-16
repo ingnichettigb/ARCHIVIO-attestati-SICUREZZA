@@ -110,7 +110,7 @@ export function ImpostaAiButton() {
       note: "Fornitore personalizzato salvato in questo browser.",
       supportaVisione: true,
       isCustom: true,
-      keyUrl: linkChiaveAttuale ?? undefined,
+      ...(linkChiaveAttuale ? { keyUrl: linkChiaveAttuale } : {}),
     };
 
     setConfig({
@@ -168,7 +168,7 @@ export function ImpostaAiButton() {
             </DialogDescription>
           </DialogHeader>
           <div className="flex flex-wrap items-center justify-between gap-2 border-b pb-3">
-            <Button size="sm" onClick={() => { applicaTemplate(TEMPLATE_RAPIDI[0]); setOpenNuova(true); }} className="gap-1.5">
+            <Button size="sm" onClick={() => { applicaTemplate(TEMPLATE_RAPIDI[0]!); setOpenNuova(true); }} className="gap-1.5">
               <Plus className="size-4" /> Aggiungi nuova AI
             </Button>
             <Button variant="ghost" size="sm" onClick={() => { if (confirm("Ripristinare l'elenco iniziale? Le AI personalizzate e le chiavi inserite verranno cancellate.")) { resetAiConfig(); toast.info("Elenco ripristinato"); } }}>

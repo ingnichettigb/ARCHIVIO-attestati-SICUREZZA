@@ -876,9 +876,10 @@ export function normalizzaNome(s: string) {
 }
 
 /** Codice fiscale pulito: solo lettere e numeri, maiuscolo. */
-function pulisciCodiceFiscale(s: string) {
+export function pulisciCF(s: string) {
   return (s || "").replace(/[^A-Za-z0-9]/g, "").toUpperCase();
 }
+const pulisciCodiceFiscale = pulisciCF;
 
 /**
  * Nome file standard per l'archivio:
