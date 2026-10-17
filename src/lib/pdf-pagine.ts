@@ -32,6 +32,12 @@ export async function estraiPagine(file: Blob, indici: number[]): Promise<Blob> 
  * Utilizzato per i fornitori AI (come Groq o Mistral) che accettano solo immagini e non PDF nativi.
  */
 export async function renderizzaPrimaPaginaPdf(file: Blob): Promise<{ base64: string; mime: string }> {
+  const dataUrl = await renderizzaPaginaPdf(file, 1, 2);
+  return { base64: dataUrl.split(",")[1] ?? "", mime: "image/png" };
+}
+
+/** Renderizza una pagina (1-based) del PDF come dataURL PNG. */
+export async function renderizzaPaginaPdf(file: Blob, numero: number, scala = 2.5): Promise<string> {
   // Carica PDF.js da CDN se non già presente nel DOM
   const w = window as unknown as { pdfjsLib?: any };
   if (!w.pdfjsLib) {
@@ -48,6 +54,22 @@ export async function renderizzaPrimaPaginaPdf(file: Blob): Promise<{ base64: st
     });
   }
 
+  const arrayBuffer = await file.arrayBuffer();
+  const loadingTask = w.pdfjsLib.getDocument({ data: arrayBuffer });
+  const pdfDoc = await loadingTask.promise;
+  const page = await pdfDoc.getPage(Math.min(Math.max(1, numero), pdfDoc.numPages));
+  const viewport = page.getViewport({ scale: scala });
+  const canvas = document.createElement("canvas");
+  const ctx = canvas.getContext("2d");
+  if (!ctx) throw new Error("Errore inizializzazione canvas grafico");
+  canvas.width = viewport.width;
+  canvas.height = viewport.height;
+  await page.render({ canvasContext: ctx, viewport }).promise;
+  return canvas.toDataURL("image/png");
+}
+
+async function _vecchiaRender(file: Blob): Promise<{ base64: string; mime: string }> {
+  const w = window as unknown as { pdfjsLib?: any };
   const arrayBuffer = await file.arrayBuffer();
   const loadingTask = w.pdfjsLib.getDocument({ data: arrayBuffer });
   const pdfDoc = await loadingTask.promise;
