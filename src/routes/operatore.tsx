@@ -23,8 +23,13 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { estraiAttestato } from "@/lib/estrazione.functions";
 import { getActiveProvider, useAiConfig } from "@/lib/ai-providers";
 import { ImpostaAiButton } from "@/components/ImpostaAiDialog";
-import { contaPagine, estraiPagine, piuSimile, somiglianza, renderizzaPrimaPaginaPdf } from "@/lib/pdf-pagine";
-import { pulisciCF } from "@/lib/api";
+import { contaPagine, estraiPagine, parsePagine, piuSimile, somiglianza, renderizzaPrimaPaginaPdf } from "@/lib/pdf-pagine";
+import { pulisciCF, upsertDipendente, CARTELLA_ARCHIVIO, cartellaDipendente, formatData, creaIntegrazioneDvr } from "@/lib/api";
+
+type CodaRiga = Omit<Riga, "esito"> & {
+  esito: string; percorso_file: string | null; mime_file: string | null; nome_file: string | null;
+  archiviato: boolean; inviato: boolean; argomenti_mancanti: string[];
+};
 import { CatturaOcr } from "@/components/CatturaOcr";
 
 type CampoOcr = "cognome" | "nome" | "codice_fiscale" | "codice_ateco" | "data_corso" | "ore" | "note";
@@ -236,7 +241,172 @@ export function PostazioneOperatore() {
     }
   }
 
-  function nomeFileStandard(r: typeof form) {
+  // ================= Salvataggio, coda di lavoro, archiviazione =================
+  const db = sb as any;
+  const [salvando, setSalvando] = useState(false);
+  const righeCoda = coda as CodaRiga[];
+  const ricarica = () => qc.invalidateQueries({ queryKey: ["coda"] });
+  const selezione = useMemo(() => righeCoda.filter((r) => selezionati.has(r.id)), [righeCoda, selezionati]);
+  const toggleSel = (id: string) => setSelezionati((s) => { const n = new Set(s); if (n.has(id)) n.delete(id); else n.add(id); return n; });
+  const est = (mime: string | null | undefined) => (mime === "application/pdf" ? "pdf" : mime?.split("/")[1]?.replace("jpeg", "jpg") || "jpg");
+
+  function nuovo() {
+    setForm(VUOTA); setFile(null); setAnteprima(null); setAnteprimaMime(null); setIdInModifica(null);
+    setPagine(""); setTotPagine(0); sorgenteRef.current = null; setCampoOcr(null);
+  }
+
+  async function salvaInCoda(archiviaSubito: boolean) {
+    if (!form.cognome || !form.codice_fiscale) return void toast.error("Servono almeno cognome e codice fiscale");
+    if (form.esito === "Non valido" && !form.note.trim()) return void toast.error("Indica il motivo del rifiuto nelle note");
+    setSalvando(true);
+    try {
+      let percorso: string | null = idInModifica ? (righeCoda.find((r) => r.id === idInModifica)?.percorso_file ?? null) : null;
+      let mime: string | null = idInModifica ? (righeCoda.find((r) => r.id === idInModifica)?.mime_file ?? null) : null;
+      if (file) {
+        let blob: Blob = file;
+        mime = file.type;
+        if (file.type === "application/pdf" && pagine.trim() && totPagine > 0) {
+          const idx = parsePagine(pagine, totPagine).map((n) => n - 1);
+          if (idx.length) blob = await estraiPagine(file, idx);
+        }
+        percorso = `Coda/${crypto.randomUUID()}.${est(mime)}`;
+        const { error } = await sb.storage.from("attestati").upload(percorso, blob, { contentType: mime });
+        if (error) throw error;
+      }
+      const { file_blob: _b, nome_file_originale: _n, pagine_salvate: _p, ...dati } = form as Riga;
+      const payload = {
+        ...dati,
+        data_nascita: dati.data_nascita || null,
+        data_corso: dati.data_corso || null,
+        percorso_file: percorso, mime_file: mime, nome_file: nomeFileStandard(form).replace(/\.pdf$/, `.${est(mime)}`),
+      };
+      const res = idInModifica
+        ? await db.from("coda_valutazioni").update(payload).eq("id", idInModifica).select().single()
+        : await db.from("coda_valutazioni").insert(payload).select().single();
+      if (res.error) throw res.error;
+      if (archiviaSubito) await archivia([{ ...VUOTA, ...res.data } as CodaRiga]);
+      else toast.success(idInModifica ? "Valutazione aggiornata" : "Aggiunto alla coda di lavoro");
+      nuovo();
+      ricarica();
+    } catch (e) {
+      toast.error((e as Error).message);
+    } finally {
+      setSalvando(false);
+    }
+  }
+
+  async function modifica(r: CodaRiga) {
+    const base = { ...VUOTA } as Record<string, unknown>;
+    for (const k of Object.keys(VUOTA)) base[k] = (r as any)[k] ?? (VUOTA as any)[k];
+    setForm(base as Omit<Riga, "id">);
+    setIdInModifica(r.id); setFile(null); setPagine(""); setTotPagine(0);
+    setAnteprimaMime(r.mime_file);
+    setAnteprima(r.percorso_file ? ((await sb.storage.from("attestati").createSignedUrl(r.percorso_file, 3600)).data?.signedUrl ?? null) : null);
+    window.scrollTo({ top: 0, behavior: "smooth" });
+  }
+
+  async function duplica(r: CodaRiga) {
+    const { id: _i, created_at: _c, updated_at: _u, ...resto } = r as any;
+    const { error } = await db.from("coda_valutazioni").insert({ ...resto, archiviato: false, inviato: false, tipo_corso_id: null, tipo_corso_nome: "" });
+    if (error) return void toast.error(error.message);
+    toast.success("Riga duplicata: scegli il secondo corso con la matita");
+    ricarica();
+  }
+
+  async function cancella(r: CodaRiga) {
+    if (!window.confirm(`Eliminare dalla coda ${r.cognome} ${r.nome} — ${r.tipo_corso_nome}?`)) return;
+    const altri = righeCoda.filter((x) => x.id !== r.id && x.percorso_file === r.percorso_file);
+    if (r.percorso_file && !altri.length && !r.archiviato) await sb.storage.from("attestati").remove([r.percorso_file]);
+    await db.from("coda_valutazioni").delete().eq("id", r.id);
+    ricarica();
+  }
+
+  function riepilogo(r: CodaRiga) {
+    let s = `${r.cognome} ${r.nome} (${r.codice_fiscale})\nCorso: ${r.tipo_corso_nome} — ${formatData(r.data_corso)} — ${r.ore ?? "?"} ore\nEsito: ${r.esito}`;
+    if (r.esito === "Valido con integrazione DVR" && r.integrazione) s += `\nIntegrazione richiesta: ${r.integrazione}`;
+    if (r.note) s += `\nNote: ${r.note}`;
+    return s;
+  }
+
+  async function archivia(righe: CodaRiga[]) {
+    let ok = 0;
+    for (const r of righe) {
+      if (r.archiviato) continue;
+      try {
+        if (!r.tipo_corso_id) throw new Error(`${r.cognome}: scegli il tipo di corso`);
+        if (!r.data_corso) throw new Error(`${r.cognome}: manca la data del corso`);
+        const dip = await upsertDipendente({
+          codice_fiscale: pulisciCF(r.codice_fiscale), cognome: r.cognome, nome: r.nome, email: r.email || null,
+          reparto: r.reparto || null, sottoreparto: null, classe_concorso: null, materia: null,
+          luogo_nascita: r.luogo_nascita || null, data_nascita: r.data_nascita || null,
+          ...(r.codice_ateco ? { codice_ateco: r.codice_ateco } : {}),
+        });
+        let percorsoFinale = r.percorso_file;
+        if (r.percorso_file) {
+          percorsoFinale = `${CARTELLA_ARCHIVIO}/${cartellaDipendente(dip)}/${nomeFileStandard(r).replace(/\.pdf$/, `.${est(r.mime_file)}`)}`;
+          const { data: blob } = await sb.storage.from("attestati").download(r.percorso_file);
+          if (blob) await sb.storage.from("attestati").upload(percorsoFinale, blob, { upsert: true, contentType: r.mime_file ?? undefined });
+        }
+        const { data: att, error } = await db.from("attestati_caricati").insert({
+          dipendente_id: dip.id, codice_fiscale: dip.codice_fiscale, tipo_corso_id: r.tipo_corso_id,
+          data_corso: r.data_corso, ore_dichiarate: r.ore, url_foto_fronte: percorsoFinale, url_foto_retro: null,
+          stato_validazione: r.esito === "Non valido" ? "Respinto" : "Approvato",
+          note_rifiuto: r.esito === "Valido" ? (r.note || null) : riepilogo(r),
+          data_validazione: new Date().toISOString(),
+        }).select("id").single();
+        if (error) throw error;
+        if (r.esito === "Valido con integrazione DVR") {
+          await creaIntegrazioneDvr({
+            dipendente_id: dip.id, attestato_origine_id: att?.id ?? null, tipo_corso_nome: r.tipo_corso_nome || null,
+            descrizione: r.integrazione || r.note || "Integrazione DVR richiesta",
+            ore: Number(r.integrazione?.match(/(\d+)\s*or/)?.[1]) || null,
+            argomenti_mancanti: r.argomenti_mancanti ?? [],
+          }).catch((e) => toast.error(`Integrazione DVR non registrata: ${(e as Error).message}`));
+        }
+        await db.from("coda_valutazioni").update({ archiviato: true }).eq("id", r.id);
+        ok++;
+      } catch (e) {
+        toast.error((e as Error).message);
+      }
+    }
+    if (ok) toast.success(`${ok} attestat${ok === 1 ? "o archiviato" : "i archiviati"} nel database`);
+    ricarica();
+    qc.invalidateQueries();
+  }
+
+  async function inviaEmail(righe: CodaRiga[]) {
+    if (!righe.length) return;
+    const destinatari = [...new Set(righe.map((r) => r.email).filter(Boolean))];
+    const persone = [...new Set(righe.map((r) => `${r.cognome} ${r.nome}`))];
+    const corpo = `Gentile ${persone.length === 1 ? persone[0] : "collega"},\n\ndi seguito l'esito della verifica degli attestati di formazione sicurezza (D.Lgs. 81/2008):\n\n${righe.map((r, i) => `${i + 1}) ${riepilogo(r)}`).join("\n\n")}\n\nCordiali saluti\nUfficio Sicurezza`;
+    const oggetto = `Esito verifica attestati — ${persone.join(", ")}`;
+    window.location.href = `mailto:${destinatari.join(",")}?subject=${encodeURIComponent(oggetto)}&body=${encodeURIComponent(corpo)}`;
+    if (!destinatari.length) toast.info("Nessuna email salvata: aggiungi il destinatario nella posta");
+    await db.from("coda_valutazioni").update({ inviato: true }).in("id", righe.map((r) => r.id));
+    ricarica();
+  }
+
+  async function salvaLocale(r: CodaRiga) {
+    if (!r.percorso_file) return void toast.error("Nessun file allegato");
+    const { data: blob, error } = await sb.storage.from("attestati").download(r.percorso_file);
+    if (error || !blob) return void toast.error("Download non riuscito");
+    const nome = nomeFileStandard(r).replace(/\.pdf$/, `.${est(r.mime_file)}`);
+    const w = window as any;
+    try {
+      if (w.showSaveFilePicker) {
+        const h = await w.showSaveFilePicker({ suggestedName: nome });
+        const wr = await h.createWritable(); await wr.write(blob); await wr.close();
+      } else {
+        const a = document.createElement("a"); a.href = URL.createObjectURL(blob); a.download = nome; a.click();
+        setTimeout(() => URL.revokeObjectURL(a.href), 2000);
+      }
+      toast.success(`Salvato: ${nome}`);
+    } catch (e) {
+      if ((e as Error).name !== "AbortError") toast.error((e as Error).message);
+    }
+  }
+
+  function nomeFileStandard(r: Pick<Riga, "data_corso" | "cognome" | "nome" | "codice_fiscale" | "tipo_corso_nome">) {
     const dataPrefix = r.data_corso ? r.data_corso.slice(0, 7) : "ANNO-MANCANTE";
     const cf = r.codice_fiscale || "SENZACF";
     const corso = (r.tipo_corso_nome || "CORSO").replace(/[^a-zA-Z0-9]/g, "_");
@@ -401,9 +571,76 @@ export function PostazioneOperatore() {
               <span className="font-semibold text-muted-foreground block mb-1">Nome file archiviazione:</span>
               {nomeFileStandard(form)}
             </div>
+
+            {totPagine > 1 && (
+              <div>
+                <Label htmlFor="pag">Pagine da salvare per questo corso (es. 1-2 oppure 3)</Label>
+                <Input id="pag" placeholder={`Tutte (1-${totPagine})`} value={pagine} onChange={(e) => setPagine(e.target.value)} />
+              </div>
+            )}
+
+            <div className="flex flex-wrap justify-end gap-2 pt-2">
+              <Button variant="ghost" onClick={nuovo}><X className="size-4" /> Svuota</Button>
+              <Button variant="outline" disabled={salvando} onClick={() => salvaInCoda(true)}><Archive className="size-4" /> Archivia subito nel DB</Button>
+              <Button disabled={salvando} onClick={() => salvaInCoda(false)}>
+                {salvando ? <Loader2 className="size-4 animate-spin" /> : <Plus className="size-4" />}
+                {idInModifica ? "Salva modifiche" : "Aggiungi alla coda"}
+              </Button>
+            </div>
           </CardContent>
         </Card>
       </div>
+
+      {/* Coda di lavoro */}
+      <Card>
+        <CardHeader className="py-3 px-4 border-b flex flex-row flex-wrap items-center justify-between gap-2">
+          <CardTitle className="text-sm font-medium">Coda di lavoro ({righeCoda.length})</CardTitle>
+          <div className="flex gap-2">
+            <Button size="sm" variant="outline" disabled={!selezione.length} onClick={() => archivia(selezione)}><Archive className="size-4" /> Aggiungi selezionati al DB</Button>
+            <Button size="sm" disabled={!selezione.length} onClick={() => inviaEmail(selezione)}><Mail className="size-4" /> Unica email ({selezione.length})</Button>
+          </div>
+        </CardHeader>
+        <CardContent className="p-0 overflow-x-auto">
+          <table className="w-full text-sm">
+            <thead className="bg-muted/50 text-left text-xs uppercase text-muted-foreground">
+              <tr>
+                <th className="p-2"><Checkbox checked={righeCoda.length > 0 && selezione.length === righeCoda.length} onCheckedChange={(v) => setSelezionati(v ? new Set(righeCoda.map((r) => r.id)) : new Set())} /></th>
+                <th className="p-2">Lavoratore</th><th className="p-2">Corso</th><th className="p-2">Data</th><th className="p-2">Esito</th><th className="p-2">Stato</th><th className="p-2 text-right">Azioni</th>
+              </tr>
+            </thead>
+            <tbody>
+              {righeCoda.length === 0 && <tr><td colSpan={7} className="p-6 text-center text-muted-foreground">Nessuna valutazione in coda</td></tr>}
+              {righeCoda.map((r) => (
+                <tr key={r.id} className="border-t">
+                  <td className="p-2"><Checkbox checked={selezionati.has(r.id)} onCheckedChange={() => toggleSel(r.id)} /></td>
+                  <td className="p-2"><div className="font-medium">{r.cognome} {r.nome}</div><div className="font-mono text-xs text-muted-foreground">{r.codice_fiscale}</div></td>
+                  <td className="p-2">{r.tipo_corso_nome || <span className="text-destructive">da scegliere</span>}<div className="text-xs text-muted-foreground">{r.ore ?? "?"} ore</div></td>
+                  <td className="p-2">{formatData(r.data_corso)}</td>
+                  <td className="p-2"><Badge variant={r.esito === "Non valido" ? "destructive" : r.esito === "Valido" ? "default" : "secondary"}>{r.esito}</Badge></td>
+                  <td className="p-2 text-xs">{r.archiviato ? <span className="text-primary">Archiviato nel DB ✓</span> : "Bozza"}{r.inviato && <div className="text-muted-foreground">Email preparata</div>}</td>
+                  <td className="p-2">
+                    <div className="flex justify-end gap-1">
+                      <Icona t="Modifica" onClick={() => modifica(r)}><Edit3 /></Icona>
+                      <Icona t="Aggiungi al database" disabled={r.archiviato} onClick={() => archivia([r])}><Archive /></Icona>
+                      <Icona t="Duplica (altro corso nello stesso file)" onClick={() => duplica(r)}><Copy /></Icona>
+                      <Icona t="Salva sul PC con nome" onClick={() => salvaLocale(r)}><Download /></Icona>
+                      <Icona t="Invia email" onClick={() => inviaEmail([r])}><Mail /></Icona>
+                      <Icona t="Elimina dalla coda" danger onClick={() => cancella(r)}><Trash2 /></Icona>
+                    </div>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </CardContent>
+      </Card>
     </div>
+  );
+}
+
+function Icona({ t, onClick, children, danger, disabled }: { t: string; onClick: () => void; children: React.ReactNode; danger?: boolean; disabled?: boolean }) {
+  return (
+    <Button size="icon" variant="ghost" title={t} aria-label={t} disabled={disabled} onClick={onClick}
+      className={`h-8 w-8 [&_svg]:h-4 [&_svg]:w-4 ${danger ? "text-destructive" : ""}`}>{children}</Button>
   );
 }
