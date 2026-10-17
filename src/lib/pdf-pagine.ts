@@ -68,7 +68,7 @@ export async function renderizzaPaginaPdf(file: Blob, numero: number, scala = 2.
   return canvas.toDataURL("image/png");
 }
 
-async function _vecchiaRender(file: Blob): Promise<{ base64: string; mime: string }> {
+export async function _vecchiaRender(file: Blob): Promise<{ base64: string; mime: string }> {
   const w = window as unknown as { pdfjsLib?: any };
   const arrayBuffer = await file.arrayBuffer();
   const loadingTask = w.pdfjsLib.getDocument({ data: arrayBuffer });
