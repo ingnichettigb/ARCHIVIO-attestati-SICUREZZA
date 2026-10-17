@@ -9,7 +9,7 @@ import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
 import {
   ArrowLeft, Archive, Check, Copy, Download, Edit3, Eye, FileText, Loader2, Mail, Plus,
-  RotateCw, Sparkles, Trash2, X, ZoomIn, ZoomOut, RotateCcw
+  RotateCw, Sparkles, Crosshair, Trash2, X, ZoomIn, ZoomOut, RotateCcw
 } from "lucide-react";
 import { supabase as sb } from "@/integrations/supabase/client";
 import { Button } from "@/components/ui/button";
@@ -25,6 +25,17 @@ import { getActiveProvider, useAiConfig } from "@/lib/ai-providers";
 import { ImpostaAiButton } from "@/components/ImpostaAiDialog";
 import { contaPagine, estraiPagine, piuSimile, somiglianza, renderizzaPrimaPaginaPdf } from "@/lib/pdf-pagine";
 import { pulisciCF } from "@/lib/api";
+import { CatturaOcr } from "@/components/CatturaOcr";
+
+type CampoOcr = "cognome" | "nome" | "codice_fiscale" | "codice_ateco" | "data_corso" | "ore" | "note";
+const ETICHETTE_OCR: Record<CampoOcr, string> = { cognome: "Cognome", nome: "Nome", codice_fiscale: "Codice Fiscale", codice_ateco: "Codice ATECO", data_corso: "Data emanazione", ore: "Ore corso", note: "Note" };
+
+function dataDaTesto(t: string): string {
+  const m = t.match(/(\d{1,2})[\/.\-](\d{1,2})[\/.\-](\d{2,4})/);
+  if (!m) return "";
+  let y = m[3]!; if (y.length === 2) y = "20" + y;
+  return `${y}-${m[2]!.padStart(2, "0")}-${m[1]!.padStart(2, "0")}`;
+}
 
 export const Route = createFileRoute("/operatore")({
   component: PostazioneOperatore,
@@ -108,6 +119,31 @@ export function PostazioneOperatore() {
   const inputRef = useRef<HTMLInputElement>(null);
   const [rotazione, setRotazione] = useState(0);
   const sorgenteRef = useRef<Blob | null>(null);
+
+  const [campoOcr, setCampoOcr] = useState<CampoOcr | null>(null);
+
+  function incollaOcr(testo: string) {
+    if (!campoOcr) return;
+    if (!testo) return void toast.error("Nessun testo riconosciuto: riprova con un rettangolo più preciso");
+    const c = campoOcr;
+    if (c === "codice_fiscale") set("codice_fiscale", pulisciCF(testo));
+    else if (c === "cognome" || c === "nome") set(c, testo.toUpperCase());
+    else if (c === "data_corso") { const d = dataDaTesto(testo); if (!d) return void toast.error(`Data non riconosciuta in: "${testo}"`); set("data_corso", d); }
+    else if (c === "ore") { const n = Number((testo.match(/\d+([.,]\d+)?/)?.[0] ?? "").replace(",", ".")); if (!n) return void toast.error("Numero non trovato"); set("ore", n); }
+    else if (c === "note") set("note", form.note ? form.note + " " + testo : testo);
+    else set(c, testo);
+    toast.success(`${ETICHETTE_OCR[c]}: ${testo}`);
+    setCampoOcr(null);
+  }
+
+  const Mirino = ({ campo }: { campo: CampoOcr }) => (
+    <button type="button" disabled={!file}
+      onClick={() => setCampoOcr(campoOcr === campo ? null : campo)}
+      title={`Cattura ${ETICHETTE_OCR[campo]} dal documento`}
+      className={`ml-1 inline-grid size-6 place-items-center rounded align-middle disabled:opacity-30 ${campoOcr === campo ? "bg-primary text-primary-foreground" : "text-muted-foreground hover:bg-muted"}`}>
+      <Crosshair className="size-3.5" />
+    </button>
+  );
 
   const set = <K extends keyof Riga>(k: K, v: Riga[K]) => setForm((f) => ({ ...f, [k]: v }));
 
@@ -262,7 +298,10 @@ export function PostazioneOperatore() {
                 <p className="text-sm font-medium">Lettura attestato con {aiAttiva.name}...</p>
               </div>
             )}
-            {anteprima ? (
+            {anteprima && file && campoOcr ? (
+              <CatturaOcr file={file} isPdf={anteprimaMime === "application/pdf"} totPagine={totPagine}
+                etichettaCampo={ETICHETTE_OCR[campoOcr]} onTesto={incollaOcr} />
+            ) : anteprima ? (
               anteprimaMime === "application/pdf" ? (
                 <iframe src={anteprima} className="w-full h-full min-h-[500px] border-none" title="Anteprima PDF" />
               ) : (
@@ -281,26 +320,27 @@ export function PostazioneOperatore() {
         <Card>
           <CardHeader className="py-3 px-4 border-b">
             <CardTitle className="text-sm font-medium">Dati estratti e valutazione</CardTitle>
+            <p className="text-xs text-muted-foreground">Clicca il mirino accanto a un campo, poi disegna un rettangolo sul documento per copiarne il testo.</p>
           </CardHeader>
           <CardContent className="p-4 space-y-4">
             <div className="grid grid-cols-2 gap-3">
               <div>
-                <Label htmlFor="cog">Cognome</Label>
+                <Label htmlFor="cog">Cognome<Mirino campo="cognome" /></Label>
                 <Input id="cog" value={form.cognome} onChange={(e) => set("cognome", e.target.value.toUpperCase())} />
               </div>
               <div>
-                <Label htmlFor="nom">Nome</Label>
+                <Label htmlFor="nom">Nome<Mirino campo="nome" /></Label>
                 <Input id="nom" value={form.nome} onChange={(e) => set("nome", e.target.value.toUpperCase())} />
               </div>
             </div>
 
             <div className="grid grid-cols-2 gap-3">
               <div>
-                <Label htmlFor="cf">Codice Fiscale</Label>
+                <Label htmlFor="cf">Codice Fiscale<Mirino campo="codice_fiscale" /></Label>
                 <Input id="cf" value={form.codice_fiscale} onChange={(e) => set("codice_fiscale", pulisciCF(e.target.value))} />
               </div>
               <div>
-                <Label htmlFor="ateco">Codice ATECO</Label>
+                <Label htmlFor="ateco">Codice ATECO<Mirino campo="codice_ateco" /></Label>
                 <Input id="ateco" value={form.codice_ateco} onChange={(e) => set("codice_ateco", e.target.value)} />
               </div>
             </div>
@@ -330,11 +370,11 @@ export function PostazioneOperatore() {
 
             <div className="grid grid-cols-3 gap-3">
               <div>
-                <Label htmlFor="dt">Data emanazione</Label>
+                <Label htmlFor="dt">Data emanazione<Mirino campo="data_corso" /></Label>
                 <Input id="dt" type="date" value={form.data_corso} onChange={(e) => set("data_corso", e.target.value)} />
               </div>
               <div>
-                <Label htmlFor="ore">Ore corso</Label>
+                <Label htmlFor="ore">Ore corso<Mirino campo="ore" /></Label>
                 <Input id="ore" type="number" value={form.ore ?? ""} onChange={(e) => set("ore", Number(e.target.value) || null)} />
               </div>
               <div>
@@ -353,7 +393,7 @@ export function PostazioneOperatore() {
             </div>
 
             <div>
-              <Label htmlFor="note">Note valutazione</Label>
+              <Label htmlFor="note">Note valutazione<Mirino campo="note" /></Label>
               <Textarea id="note" rows={3} value={form.note} onChange={(e) => set("note", e.target.value)} />
             </div>
 
